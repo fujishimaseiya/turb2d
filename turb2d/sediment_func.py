@@ -107,6 +107,9 @@ def get_es(R, g, Ds, nu, u_star, function="GP1991field", out=None):
         _gp1991(R, g, Ds, nu, u_star, p=0.1, out=out)
     if function == "GP1991exp":
         _gp1991(R, g, Ds, nu, u_star, p=1.0, out=out)
+    if function=='wright_and_parker(2004)':
+        _wright_and_parker(R, g, Ds, nu, u_star, sigma=0.52, w_k=4.0 * 10**-5, slope_inside=2.4*10**-5, out=None)
+
 
     return out
 
@@ -146,5 +149,29 @@ def _gp1991(R, g, Ds, nu, u_star, p=1.0, out=None):
     # calculate entrainment rate
     Z = sus_index * Rp ** alpha
     out[:, :] = p * a * Z ** 5 / (1 + (a / 0.3) * Z ** 5)
+
+    return out
+
+def _wright_and_parker(R, g, Ds, nu, u_star, sigma, w_k, slope_inside, out=None\
+):
+
+    if out is None:
+        out = np.zeros(u_star.shape)
+
+    a = 7.8 * 10**-7
+    me = 1.0
+    Rp = np.sqrt(R * g * Ds) * Ds / nu
+    kshi=1-0.288*sigma
+    Ds50=Ds
+
+    if Rp>2.36:
+        alpha_1=1.0
+        alpha_2=0.6
+    elif Rp<=2.36:
+        alpha_1=0.586
+        alpha_2=1.23
+
+    Z = alpha_1 * kshi * (u_star/w_k) * Rp**alpha_2 * slope_inside*0.08 * (Ds/Ds50)**0.2
+    out[:] = me * a * Z**5 / (1 + (a / 0.3) * Z**5)
 
     return out

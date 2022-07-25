@@ -148,7 +148,7 @@ def create_init_flow_region(
             [x, y] coordinates of center of initial flow region
     """
     # check number of grain size classes
-    if type(initial_flow_concentration) is float:
+    if type(initial_flow_concentration) is float or type(initial_flow_concentration) is np.float64:
         initial_flow_concentration_i = np.array([initial_flow_concentration])
     else:
         initial_flow_concentration_i = np.array(initial_flow_concentration).reshape(

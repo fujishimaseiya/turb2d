@@ -1,6 +1,7 @@
 """This is a script to run the model of TurbidityCurrent2D
 """
 import os
+import shutil
 os.environ['MKL_NUM_THREADS'] = '6'
 os.environ['OMP_NUM_THREADS'] = '6'
 import numpy as np
@@ -31,10 +32,10 @@ grid = create_topography(
 #                                       spacing=500,
 #                                       filter_size=[5, 5])
 
-grid.set_status_at_node_on_edges(top=grid.BC_NODE_IS_FIXED_GRADIENT,
-                                 bottom=grid.BC_NODE_IS_FIXED_GRADIENT,
-                                 right=grid.BC_NODE_IS_FIXED_GRADIENT,
-                                 left=grid.BC_NODE_IS_FIXED_GRADIENT)
+#grid.set_status_at_node_on_edges(top=grid.BC_NODE_IS_FIXED_GRADIENT,
+#                                 bottom=grid.BC_NODE_IS_FIXED_GRADIENT,
+#                                 right=grid.BC_NODE_IS_FIXED_GRADIENT,
+#                                 left=grid.BC_NODE_IS_FIXED_GRADIENT)
 
 # grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 # grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
@@ -55,7 +56,7 @@ grid.set_status_at_node_on_edges(top=grid.BC_NODE_IS_FIXED_GRADIENT,
 
 create_init_flow_region(
     grid,
-    initial_flow_concentration=0.01,
+    initial_flow_concentration=[0.01,0.01],
     initial_flow_thickness=100,
     initial_region_radius=100,
     initial_region_center=[1000, 4000],  # 1000, 4000
@@ -68,7 +69,8 @@ create_init_flow_region(
 #     initial_region_radius=30000,
 #     initial_region_center=[100000, 125000],
 # )
-
+# import pdb
+# pdb.set_trace()
 # making turbidity current object
 tc = TurbidityCurrent2D(
     grid,
@@ -76,7 +78,7 @@ tc = TurbidityCurrent2D(
     alpha=0.4,
     kappa=0.05,
     nu_a=0.75,
-    Ds=80 * 10**-6,
+    Ds=np.array([8.8*10**-5, 4.4*10**-5]),
     h_init=0.0,
     Ch_w=10**(-5),
     h_w=0.001,
@@ -84,20 +86,27 @@ tc = TurbidityCurrent2D(
     implicit_num=100,
     implicit_threshold=1.0 * 10**-15,
     r0=1.5,
-    water_entrainment=False,
+    water_entrainment=True,
     suspension=True,
 )
 
+path = '/home/biosphere/fujishima'
+dirname = 'test'
+dirpath = os.path.join(path, dirname)
+if not os.path.exists(dirpath):
+    os.mkdir(dirpath)
+shutil.copy('run_turb2d_script.py', dirpath)
+
 # start calculation
 t = time.time()
-tc.save_nc('tc{:04d}.nc'.format(0))
+tc.save_nc('/{}/tc{:04d}.nc'.format(dirpath, 0))
 Ch_init = np.sum(tc.C * tc.h)
 last = 200
 
 for i in tqdm(range(1, last + 1), disable=False):
     tc.run_one_step(dt=50.0)
-    tc.save_nc('tc{:04d}.nc'.format(i))
+    tc.save_nc('/{}/tc{:04d}.nc'.format(dirpath, i))
     if np.sum(tc.C * tc.h) / Ch_init < 0.01:
         break
-tc.save_grid('tc{:04d}.nc'.format(i))
+tc.save_grid('/{}/tc{:04d}.nc'.format(dirpath, i))
 print('elapsed time: {} sec.'.format(time.time() - t))
