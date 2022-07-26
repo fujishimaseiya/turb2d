@@ -6,21 +6,24 @@ import numpy as np
 from turb2d import RunMultiFlows
 import time
 import shutil
+import pdb
 
-path = "/home/biosphere/fujishima/training_data/mixed_grain/4eq"
+# pdb.set_trace()
+
+path = "C:\\Users\\Seiya\\Desktop\\test_turb2d"
 dirname = "4eq_spacing10"
 dirpath = os.path.join(path, dirname)
 if not os.path.exists(dirpath):
     os.mkdir(dirpath)
 
-shutil.copy("/home/biosphere/fujishima/turb2d/run_multiflow_script.py", dirpath)
-shutil.copy("/home/biosphere/fujishima/turb2d/turb2d/run_flows.py", dirpath)
+shutil.copy("C:\\Users\\Seiya\\Documents\\Python_Scripts\\turb2d_mixed_grain\\turb2d\\run_multiflow_script.py", dirpath)
+shutil.copy("C:\\Users\\Seiya\\Documents\\Python_Scripts\\turb2d_mixed_grain\\turb2d\\turb2d\\run_flows.py", dirpath)
 
 # import pdb
 # ipdb.set_trace()
 grain_class_num = 4
-proc = 15  # number of processors to be used
-num_runs = 3000
+proc = 1  # number of processors to be used
+num_runs = 10
 Cmin, Cmax = [0.0001, 0.01]
 rmin, rmax = [50., 200.]
 # hmin, hmax = [0., .]
@@ -34,17 +37,19 @@ r_ini = np.random.uniform(rmin, rmax, num_runs)
 h_ini = np.random.uniform(hmin, hmax, num_runs)
 
 rmf = RunMultiFlows(
-    C_ini,
-    r_ini,
-    h_ini,
     dirpath,
     os.path.join(dirpath, 'num_3000.nc'),
-    grain_class_num,
+    C_ini=C_ini,
+    r_ini=r_ini,
+    h_ini=r_ini,
+    grain_class_num=grain_class_num,
     processors=proc,
     endtime=4000.0,
     timelimit=None
 )
+# pdb.set_trace()
 rmf.create_datafile()
 start = time.time()
+print("start calculation")
 rmf.run_multiple_flows()
 print("elapsed time: {} sec.".format(time.time() - start))
