@@ -14,6 +14,7 @@ import time
 import multiprocessing as mp
 import netCDF4
 from landlab.io.native_landlab import save_grid
+from landlab import FieldError
 
 
 class RunMultiFlows():
@@ -23,14 +24,14 @@ class RunMultiFlows():
             self,
             dirpath,
             filename,
-            C_ini=None,
-            U_ini=None,
-            r_ini=None,
-            h_ini=None,
+            C_ini=0.01,
+            U_ini=0.01,
+            r_ini=100,
+            h_ini=100,
             grain_class_num=1,
             processors=1,
             endtime=1000,
-            flow_type=None,
+            flow_type='surge',
             timelimit=None
     ):
 
@@ -43,8 +44,6 @@ class RunMultiFlows():
         self.num_runs = len(C_ini)
         self.processors = processors
         self.endtime = endtime
-        if flow_type is None:
-            flow_type = 'surge'
         self.flow_type = flow_type
         self.timelimit = timelimit
         self.grain_class_num = grain_class_num
@@ -66,7 +65,7 @@ class RunMultiFlows():
         grid = create_topography(
             length=5000,
             width=2000,
-            spacing=10,
+            spacing=100,
             slope_outside=0.2,
             slope_inside=0.05,
             slope_basin_break=2000,
@@ -109,15 +108,16 @@ class RunMultiFlows():
     def produce_continuous_flow(self, C_ini, U_ini, h_ini):
 
         grid = create_topography(
-            length=5000,
-            width=2000,
-            spacing=10,
-            slope_outside=0.2,
-            slope_inside=0.05,
-            slope_basin_break=2000,
-            canyon_basin_break=2200,
-            canyon_center=1000,
-            canyon_half_width=100,
+            length=4.8,
+            width=2.2,
+            spacing=0.1,
+            slope_outside=10,
+            slope_inside=10,
+            slope_basin=10,
+            slope_basin_break=2,
+            canyon_basin_break=2.2,
+            canyon_center=0.11,
+            canyon_half_width=0.1,
         )
         
         grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
@@ -126,10 +126,10 @@ class RunMultiFlows():
         grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
         
         # set inlet
-        inlet = np.where((grid.x_of_node > 800)
-                         & (grid.x_of_node < 1200) & (grid.y_of_node > 4970))
-        inlet_link = np.where((grid.x_of_link > 800) & (grid.x_of_link < 1200)
-                              & (grid.y_of_link > 4970))
+        inlet = np.where((grid.x_of_node > 0.88)
+                         & (grid.x_of_node < 1.32) & (grid.y_of_node > 4.7))
+        inlet_link = np.where((grid.midpoint_of_link[:,0] > 0.88) & (grid.midpoint_of_link[:,0] < 1.32)
+                              & (grid.midpoint_of_link[:,1] > 4.7))
 
         # check number of grain size classes
         if type(C_ini) is float or type(C_ini) is np.float64:
@@ -177,7 +177,7 @@ class RunMultiFlows():
         # set condition at inlet
         grid.at_node['flow__depth'][inlet] = h_ini
         for i in range(len(C_ini_i)):
-            grid.add_zeros("flow__sediment_concentration_{}".format(i), at="node")
+            grid.at_node['flow__sediment_concentration_{}'.format(i)][inlet] = C_ini[i]
         grid.at_node['flow__horizontal_velocity_at_node'][inlet] = 0.0
         grid.at_node['flow__vertical_velocity_at_node'][inlet] = -U_ini
         grid.at_link['flow__horizontal_velocity'][inlet_link] = 0.0
@@ -192,8 +192,9 @@ class RunMultiFlows():
                                 h_w=0.01,
                                 C_init=0.00001,
                                 implicit_num=100,
-                                implicit_threshold=1.0 * 10**-5,
+                                implicit_threshold=1.0 * 10**-10,
                                 r0=1.5,
+                                sed_entrainment_func='GP1991exp',
                                 model='4eq')
 
         return tc
@@ -371,7 +372,7 @@ class RunMultiFlows():
         if self.flow_type == 'surge':
             tc = self.produce_surge_flow(C_list, 100, 100)
         elif self.flow_type == 'continuous':
-            tc = self.produce_continuous_flow(C_list, 100, 100)
+            tc = self.produce_continuous_flow(C_list, 1, 100)
         grid_x = tc.grid.nodes.shape[0]
         grid_y = tc.grid.nodes.shape[1]
         dx = tc.grid.dx
