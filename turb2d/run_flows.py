@@ -120,7 +120,7 @@ class RunMultiFlows():
             canyon_half_width=0.1,
         )
         
-        grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
+        grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
         grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
         grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
         grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
@@ -177,11 +177,12 @@ class RunMultiFlows():
         # set condition at inlet
         grid.at_node['flow__depth'][inlet] = h_ini
         for i in range(len(C_ini_i)):
-            grid.at_node['flow__sediment_concentration_{}'.format(i)][inlet] = C_ini[i]
+            grid.at_node['flow__sediment_concentration_{}'.format(i)][inlet] = C_ini_i[i]
         grid.at_node['flow__horizontal_velocity_at_node'][inlet] = 0.0
         grid.at_node['flow__vertical_velocity_at_node'][inlet] = -U_ini
         grid.at_link['flow__horizontal_velocity'][inlet_link] = 0.0
         grid.at_link['flow__vertical_velocity'][inlet_link] = -U_ini
+        grid.at_link['flow__sediment_concentration_total'][inlet] = np.sum(C_ini_i)
 
         tc = TurbidityCurrent2D(grid,
                                 Cf=0.004,
@@ -372,7 +373,7 @@ class RunMultiFlows():
         if self.flow_type == 'surge':
             tc = self.produce_surge_flow(C_list, 100, 100)
         elif self.flow_type == 'continuous':
-            tc = self.produce_continuous_flow(C_list, 1, 100)
+            tc = self.produce_continuous_flow(C_list, 1, 1)
         grid_x = tc.grid.nodes.shape[0]
         grid_y = tc.grid.nodes.shape[1]
         dx = tc.grid.dx
