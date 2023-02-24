@@ -182,7 +182,7 @@ class RunMultiFlows():
         grid.at_node['flow__vertical_velocity_at_node'][inlet] = -U_ini
         grid.at_link['flow__horizontal_velocity'][inlet_link] = 0.0
         grid.at_link['flow__vertical_velocity'][inlet_link] = -U_ini
-        grid.at_link['flow__sediment_concentration_total'][inlet] = np.sum(C_ini_i)
+        grid.at_['flow__sediment_concentration_total'][inlet] = np.sum(C_ini_i)
 
         tc = TurbidityCurrent2D(grid,
                                 Cf=0.004,
