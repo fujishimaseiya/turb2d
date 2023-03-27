@@ -857,6 +857,8 @@ def adjust_negative_values(
 
     if counter == loop:
         out_f[out_f < 0] = 0
-        print("Forester filter failed to fix negative values")
+    #     print("Forester filter failed to fix negative values")
+
+    #out_f[out_f < 0.0] = 0.0
 
     return out_f

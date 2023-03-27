@@ -11,7 +11,7 @@ import pdb
 
 # pdb.set_trace()
 if __name__ ==  '__main__':
-    path = "../training_data/exp2/3eq"
+    path = "../training_data/4eq"
     dirname = "0.004_0.6_1.5_erosion"
     dirpath = os.path.join(path, dirname)
     if not os.path.exists(dirpath):

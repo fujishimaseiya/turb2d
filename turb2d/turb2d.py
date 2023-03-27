@@ -156,6 +156,7 @@ class TurbidityCurrent2D(Component):
         no_erosion=True,
         salt = False,
         model="3eq",
+        alpha_4eq = 0.1,
         **kwds
     ):
         """Create a component of turbidity current
@@ -253,6 +254,7 @@ class TurbidityCurrent2D(Component):
         self.no_erosion = no_erosion
         self.der_active_layer = 0
         self.salt = salt
+        self.alpha_4eq = alpha_4eq
 
         # Now setting up fields at nodes and links
         try:
@@ -278,38 +280,21 @@ class TurbidityCurrent2D(Component):
             self.eta_init = self.eta[:] - self.bed_thick[:]
 
         try:
-            if self.salt == False:
-                self.bed_thick_i = np.empty(
-                    [self.number_gclass, grid.number_of_nodes], dtype=float
+            self.bed_thick_i = np.empty(
+                [self.number_gclass, grid.number_of_nodes], dtype=float
+            )
+            for i in range(self.number_gclass):
+                self.bed_thick_i[i, :] = grid.add_zeros(
+                    "bed__sediment_volume_per_unit_area_" + str(i),
+                    at="node",
+                    units=self._var_units["bed__sediment_volume_per_unit_area_i"],
                 )
-                for i in range(self.number_gclass):
-                    self.bed_thick_i[i, :] = grid.add_zeros(
-                        "bed__sediment_volume_per_unit_area_" + str(i),
-                        at="node",
-                        units=self._var_units["bed__sediment_volume_per_unit_area_i"],
-                    )
-            else:
-                self.bed_thick_i = np.empty(
-                    [self.number_gclass-1, grid.number_of_nodes], dtype=float
-                )
-                for i in range(self.number_gclass-1):
-                    self.bed_thick_i[i, :] = grid.add_zeros(
-                        "bed__sediment_volume_per_unit_area_" + str(i),
-                        at="node",
-                        units=self._var_units["bed__sediment_volume_per_unit_area_i"],
-                    )
+            
         except FieldError:
-            if self.salt ==  False:
-                for i in range(self.number_gclass):
-                    self.bed_thick_i[i, :] = grid.at_node[
-                        "bed__sediment_volume_per_unit_area_" + str(i)
-                    ]
-            else:
-                for i in range(self.number_gclass-1):
-                    self.bed_thick_i[i, :] = grid.at_node[
-                        "bed__sediment_volume_per_unit_area_" + str(i)
-                    ]
-
+            for i in range(self.number_gclass):
+                self.bed_thick_i[i, :] = grid.at_node[
+                    "bed__sediment_volume_per_unit_area_" + str(i)
+                ]
         try:
             if self.salt == False:
                 self.bed_active_layer = np.empty(
@@ -326,17 +311,18 @@ class TurbidityCurrent2D(Component):
                     )
             else:
                 self.bed_active_layer = np.empty(
-                    [self.number_gclass-1, grid.number_of_nodes], dtype=float
+                    [self.number_gclass, grid.number_of_nodes], dtype=float
                 )
-                for i in range(self.number_gclass-1):
+                for i in range(self.number_gclass):
                     self.bed_active_layer[i, :] = (
                         grid.add_ones(
                             "bed__active_layer_fraction_" + str(i),
                             at="node",
                             units=self._var_units["bed__active_layer_fraction_i"],
                         )
-                        / self.number_gclass
+                        / (self.number_gclass-1)
                     )
+                self.bed_active_layer[-1, :] = 0.0
         except FieldError:
             if self.salt == False:
                 for i in range(self.number_gclass):
@@ -344,7 +330,7 @@ class TurbidityCurrent2D(Component):
                         "bed__active_layer_fraction_" + str(i)
                     ]
             else:
-                for i in range(self.number_gclass-1):
+                for i in range(self.number_gclass):
                     self.bed_active_layer[i, :] = grid.at_node[
                         "bed__active_layer_fraction_" + str(i)
                     ]
@@ -688,7 +674,7 @@ class TurbidityCurrent2D(Component):
 
         # Calculate subordinate parameters
         self.ws = get_ws(self.R, self.g, self.Ds, self.nu)
-        if salt is True:
+        if self.salt is True:
             self.ws[-1] = 0.
 
         # Start time of simulation is at 0 s
@@ -1496,7 +1482,7 @@ class TurbidityCurrent2D(Component):
         self.Kh_temp[self.wet_pwet_links[self.Kh_temp[self.wet_pwet_links] < 0]] = 0.0
 
         # development of turbulent kinetic energy
-        alpha = 0.6
+        alpha = self.alpha_4eq
         # Ri = self.R * self.g * self.Ch_link[self.wet_pwet_links] \
         #      / self.U[self.wet_pwet_links] / self.U[self.wet_pwet_links]
         # beta = (0.5 * self.ew_link[self.wet_pwet_links] *
@@ -1994,7 +1980,6 @@ class TurbidityCurrent2D(Component):
 
         # copy previous values of Ch
         self.Ch_i_prev[:, nodes] = Ch_i[:, nodes]
-
         # Calculate shear velocity
         u_star = np.sqrt(self.Cf_node[nodes] * U_node[nodes] * U_node[nodes])
         # with open('shear3.csv', 'a') as f:
@@ -2004,28 +1989,20 @@ class TurbidityCurrent2D(Component):
 
 
         # Calculate entrainment rate
-        if self.salt == False:
-            self.es[:, nodes] = get_es(
-                self.R,
-                self.g,
-                self.Ds,
-                self.nu,
-                u_star,
-                function=self.sed_entrainment_func,
-            )
-        else:
-            self.es[:, nodes] = get_es(
-                self.R,
-                self.g,
-                self.Ds[:-1],
-                self.nu,
-                u_star,
-                function=self.sed_entrainment_func,
-            )
-
+        
+        self.es[:, nodes] = get_es(
+            self.R,
+            self.g,
+            self.Ds,
+            self.nu,
+            u_star,
+            function=self.sed_entrainment_func,
+        )
+        
         # Calculate the change of volume of suspended sediment
         # Settling is solved explicitly, and entrainment is
         # solved semi-implicitly
+        
         out_Ch_i[:, nodes] = (
             Ch_i[:, nodes]
             + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt
@@ -2034,14 +2011,14 @@ class TurbidityCurrent2D(Component):
 
         # Obtain sedimentation rate
         self.bed_change_i[:, nodes] = self.Ch_i_prev[:,
-                                                     nodes] - out_Ch_i[:, nodes]
+                                                    nodes] - out_Ch_i[:, nodes]
         # self.bed_change_i[:, nodes] = 0.0
 
         # if erosion is forbidden, out_Ch_i is modified
         if self.no_erosion is True:
             eroded_region = np.sum(self.bed_change_i[:, nodes], axis=0) < 0.0
             out_Ch_i[:, nodes[eroded_region]
-                     ] = self.Ch_i_prev[:, nodes[eroded_region]]
+                    ] = self.Ch_i_prev[:, nodes[eroded_region]]
             self.bed_change_i[:, nodes[eroded_region]] = 0.0
 
         # Apply diffusion to avoid slope steeper than angle of repose
@@ -2331,36 +2308,20 @@ class TurbidityCurrent2D(Component):
 
         # add sediment volume per unit area of each grain
         #  size class
-        if self.salt == False:
-            variable_names.extend(
-                [
-                    "bed__sediment_volume_per_unit_area_{}".format(i)
-                    for i in range(self.number_gclass)
-                ]
-            )
-        else:
-            variable_names.extend(
-                [
-                    "bed__sediment_volume_per_unit_area_{}".format(i)
-                    for i in range(self.number_gclass-1)
-                ]
-            )
+        variable_names.extend(
+            [
+                "bed__sediment_volume_per_unit_area_{}".format(i)
+                for i in range(self.number_gclass)
+            ]
+        )
 
         # add grain size distribution in active layer
-        if self.salt == False:
-            variable_names.extend(
-                [
-                    "bed__active_layer_fraction_{}".format(i)
-                    for i in range(self.number_gclass)
-                ]
-            )
-        else:
-            variable_names.extend(
-                [
-                    "bed__active_layer_fraction_{}".format(i)
-                    for i in range(self.number_gclass-1)
-                ]
-            )
+        variable_names.extend(
+            [
+                "bed__active_layer_fraction_{}".format(i)
+                for i in range(self.number_gclass)
+            ]
+        )
 
         write_netcdf(filename, self.grid, names=variable_names, at="node")
 

@@ -159,8 +159,8 @@ for k in alpha_4eq:
                                 alpha_4eq = k,
                                 model='4eq')
 
-        path = os.getcwd()
-        dirname = 'test'
+        path = 'C:\\Users\\Biosphere\\Documents\\fujishima\\4eq_alpha_noerosion'
+        dirname = '4eq_alpha{}'.format(k)
         dirpath = os.path.join(path, dirname)
         if not os.path.exists(dirpath):
             os.mkdir(dirpath)

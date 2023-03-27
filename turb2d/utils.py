@@ -9,6 +9,7 @@ import numpy as np
 from osgeo import gdal, gdalconst
 from scipy.ndimage import median_filter
 from landlab import FieldError
+from decimal import Decimal
 
 
 def create_topography(
@@ -79,9 +80,12 @@ def create_topography(
     """
     # making grid
     # size of calculation domain is 4 x 8 km with dx = 20 m
-    lgrids = int(length / spacing)
-    wgrids = int(width / spacing)
-    grid = RasterModelGrid((lgrids, wgrids), xy_spacing=[spacing, spacing])
+    length = Decimal(str(length))
+    width = Decimal(str(width))
+    spacing = Decimal(str(spacing))
+    lgrids = length / spacing
+    wgrids = width / spacing
+    grid = RasterModelGrid((lgrids+1, wgrids+1), xy_spacing=[spacing, spacing])
     grid.add_zeros("flow__depth", at="node")
     grid.add_zeros("topographic__elevation", at="node")
     grid.add_zeros("flow__horizontal_velocity_at_node", at="node")

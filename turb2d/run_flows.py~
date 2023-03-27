@@ -213,7 +213,7 @@ class RunMultiFlows():
                                 salt=True,
                                 alpha_4eq=0.6,
                                 la=0.003,
-                                model='3eq')
+                                model='4eq')
 
         return tc
 
