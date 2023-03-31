@@ -18,6 +18,8 @@ from landlab import Component, FieldError
 import numpy as np
 import time
 from tqdm import tqdm
+import pdb
+import yaml
 
 """A component of landlab that simulates a turbidity current on 2D grids
 
@@ -91,6 +93,7 @@ class TurbidityCurrent2D(Component):
         "bed__thickness": "m",
         "flow__surface_elevation": "m",
         "bed__active_layer_fraction_i": "1",
+        "deriviation_of_bed__active_layer_fraction_i": "1",
         "bed__sediment_volume_per_unit_area_i": "m",
     }
 
@@ -129,6 +132,7 @@ class TurbidityCurrent2D(Component):
     def __init__(
         self,
         grid,
+        config_path=None,
         h_init=0.0,
         Ch_w=10 ** (-4),
         h_w=0.01,
@@ -151,7 +155,9 @@ class TurbidityCurrent2D(Component):
         suspension=True,
         sed_entrainment_func="GP1991field",
         no_erosion=True,
+        salt = False,
         model="3eq",
+        alpha_4eq = 0.1,
         **kwds
     ):
         """Create a component of turbidity current
@@ -219,34 +225,73 @@ class TurbidityCurrent2D(Component):
         self._grid = grid
 
         # Copy model parameters
-        self.h_init = h_init
-        self.alpha = alpha
-        self.Cf = Cf
-        self.g = g
-        self.R = R
-        if type(Ds) is float:
-            self.Ds = np.array([Ds]).reshape(1, 1)
+        if config_path is None:
+            self.h_init = h_init
+            self.alpha = alpha
+            self.Cf = Cf
+            self.g = g
+            self.R = R
+            if type(Ds) is float:
+                self.Ds = np.array([Ds]).reshape(1, 1)
+            else:
+                self.Ds = np.array(Ds).reshape(len(Ds), 1)
+            self.number_gclass = len(self.Ds)
+            self.Ch_w = Ch_w
+            self.h_w = h_w
+            self.nu = nu
+            self.kappa = kappa
+            self.nu_a = nu_a
+            self.r0 = r0
+            self.lambda_p = lambda_p
+            self.implicit_num = implicit_num
+            self.implicit_threshold = implicit_threshold
+            self.C_init = C_init
+            self.gamma = gamma
+            self.la = la
+            self.water_entrainment = water_entrainment
+            self.suspension = suspension
+            self.sed_entrainment_func = sed_entrainment_func
+            self.model = model
+            self.karman = 0.4
+            self.no_erosion = no_erosion
+            self.der_active_layer = 0
+            self.salt = salt
+            self.alpha_4eq = alpha_4eq
         else:
-            self.Ds = np.array(Ds).reshape(len(Ds), 1)
-        self.number_gclass = len(self.Ds)
-        self.Ch_w = Ch_w
-        self.h_w = h_w
-        self.nu = nu
-        self.kappa = kappa
-        self.nu_a = nu_a
-        self.r0 = r0
-        self.lambda_p = lambda_p
-        self.implicit_num = implicit_num
-        self.implicit_threshold = implicit_threshold
-        self.C_init = C_init
-        self.gamma = gamma
-        self.la = la
-        self.water_entrainment = water_entrainment
-        self.suspension = suspension
-        self.sed_entrainment_func = sed_entrainment_func
-        self.model = model
-        self.karman = 0.4
-        self.no_erosion = no_erosion
+            with open(config_path) as yml:
+                config = yaml.safe_load(yml)
+            self.h_init = config['flow']['h_init']
+            self.alpha = config['flow']['alpha']
+            self.Cf = config['flow']['Cf']
+            self.g = config['flow']['g']
+            self.R = config['flow']['R']
+            if type(config['flow']['Ds']) is float:
+                self.Ds = np.array(config['flow']['Ds']).reshape(1, 1)
+            else:
+                # FIXME how explain list in yaml?
+                self.Ds = np.array(config['flow']['Ds']).reshape(len(config['flow']['Ds']), 1)
+            self.number_gclass = len(self.Ds)
+            self.Ch_w = config['flow']['Ch_w']
+            self.h_w = config['flow']['h_w']
+            self.nu = config['flow']['nu']
+            self.kappa = config['flow']['kappa']
+            self.nu_a = config['flow']['nu_a']
+            self.r0 = config['flow']['r0']
+            self.lambda_p = config['flow']['lambda_p']
+            self.implicit_num = config['flow']['implicit_num']
+            self.implicit_threshold = config['flow']['implicit_threshold']
+            self.C_init = config['flow']['C_init']
+            self.gamma = config['flow']['gamma']
+            self.la = config['flow']['la']
+            self.water_entrainment = config['flow']['water_entrainment']
+            self.suspension = config['flow']['suspension']
+            self.sed_entrainment_func = config['flow']['sed_entrainment_func']
+            self.model = config['flow']['model']
+            self.karman = config['flow']['karman']
+            self.no_erosion = config['flow']['no_erosion']
+            self.der_active_layer = 0
+            self.salt = config['flow']['salt']
+            self.alpha_4eq = config['flow']['alpha_4eq']
 
         # Now setting up fields at nodes and links
         try:
@@ -281,30 +326,70 @@ class TurbidityCurrent2D(Component):
                     at="node",
                     units=self._var_units["bed__sediment_volume_per_unit_area_i"],
                 )
+            
         except FieldError:
             for i in range(self.number_gclass):
                 self.bed_thick_i[i, :] = grid.at_node[
                     "bed__sediment_volume_per_unit_area_" + str(i)
                 ]
-
         try:
-            self.bed_active_layer = np.empty(
-                [self.number_gclass, grid.number_of_nodes], dtype=float
-            )
-            for i in range(self.number_gclass):
-                self.bed_active_layer[i, :] = (
-                    grid.add_ones(
-                        "bed__active_layer_fraction_" + str(i),
-                        at="node",
-                        units=self._var_units["bed__active_layer_fraction_i"],
-                    )
-                    / self.number_gclass
+            if self.salt == False:
+                self.bed_active_layer = np.empty(
+                    [self.number_gclass, grid.number_of_nodes], dtype=float
                 )
+                for i in range(self.number_gclass):
+                    self.bed_active_layer[i, :] = (
+                        grid.add_ones(
+                            "bed__active_layer_fraction_" + str(i),
+                            at="node",
+                            units=self._var_units["bed__active_layer_fraction_i"],
+                        )
+                        / self.number_gclass
+                    )
+            else:
+                self.bed_active_layer = np.empty(
+                    [self.number_gclass, grid.number_of_nodes], dtype=float
+                )
+                for i in range(self.number_gclass):
+                    self.bed_active_layer[i, :] = (
+                        grid.add_ones(
+                            "bed__active_layer_fraction_" + str(i),
+                            at="node",
+                            units=self._var_units["bed__active_layer_fraction_i"],
+                        )
+                        / (self.number_gclass-1)
+                    )
+                self.bed_active_layer[-1, :] = 0.0
         except FieldError:
-            for i in range(self.number_gclass):
-                self.bed_active_layer[i, :] = grid.at_node[
-                    "bed__active_layer_fraction_" + str(i)
-                ]
+            if self.salt == False:
+                for i in range(self.number_gclass):
+                    self.bed_active_layer[i, :] = grid.at_node[
+                        "bed__active_layer_fraction_" + str(i)
+                    ]
+            else:
+                for i in range(self.number_gclass):
+                    self.bed_active_layer[i, :] = grid.at_node[
+                        "bed__active_layer_fraction_" + str(i)
+                    ]
+        
+        # try:
+        #     self.der_active_layer = np.empty(
+        #             [self.number_gclass, grid.number_of_nodes], dtype=float
+        #     )
+        #     for i in range(self.number_gclass):
+        #         self.der_active_layer[i, :] = (
+        #             grid.add_zeros(
+        #                 "der_bed__active_layer_fraction_" + str(i),
+        #                 at="node",
+        #                 units=self._var_units["deriviation_of_bed__active_layer_fraction_i"],
+        #             )
+        #             / self.number_gclass
+        #         )
+        # except FieldError:
+        #     for i in range(self.number_gclass):
+        #         self.der_active_layer[i, :] = grid.at_node[
+        #             "der_bed__active_layer_fraction_" + str(i)
+        #         ]
 
         try:
             self.h = grid.add_zeros(
@@ -626,6 +711,8 @@ class TurbidityCurrent2D(Component):
 
         # Calculate subordinate parameters
         self.ws = get_ws(self.R, self.g, self.Ds, self.nu)
+        if self.salt is True:
+            self.ws[-1] = 0.
 
         # Start time of simulation is at 0 s
         grid.at_grid["time__elapsed"] = 0.0
@@ -700,10 +787,16 @@ class TurbidityCurrent2D(Component):
         # velocity variables to the fields.
         self.h = self.grid["node"]["flow__depth"]
         self.eta = self.grid["node"]["topographic__elevation"]
-        for i in range(self.number_gclass):
-            self.bed_thick_i[i, :] = self.grid["node"][
-                "bed__sediment_volume_per_unit_area_" + str(i)
-            ]
+        if self.salt == False:
+            for i in range(self.number_gclass):
+                self.bed_thick_i[i, :] = self.grid["node"][
+                    "bed__sediment_volume_per_unit_area_" + str(i)
+                ]
+        else:
+            for i in range(self.number_gclass-1):
+                self.bed_thick_i[i, :] = self.grid["node"][
+                    "bed__sediment_volume_per_unit_area_" + str(i)
+                ]
         self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
         self.u = self.grid["link"]["flow__horizontal_velocity"]
         self.v = self.grid["link"]["flow__vertical_velocity"]
@@ -921,6 +1014,11 @@ class TurbidityCurrent2D(Component):
                 out_dfdx=self.dKhdx_temp,
                 out_dfdy=self.dKhdy_temp,
             )
+        # print(self.wet_nodes[self.Ch_i_temp[0,:][self.wet_nodes]<0].shape)
+        # x = len(self.wet_nodes[self.Ch_i_temp[0,:][self.wet_nodes]<0])
+        # with open ("wetnode_negch_4eq.csv", "a") as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow([x])
 
         # remove abnormal values
         self._remove_abnormal_values()
@@ -1421,7 +1519,7 @@ class TurbidityCurrent2D(Component):
         self.Kh_temp[self.wet_pwet_links[self.Kh_temp[self.wet_pwet_links] < 0]] = 0.0
 
         # development of turbulent kinetic energy
-        alpha = 0.1
+        alpha = self.alpha_4eq
         # Ri = self.R * self.g * self.Ch_link[self.wet_pwet_links] \
         #      / self.U[self.wet_pwet_links] / self.U[self.wet_pwet_links]
         # beta = (0.5 * self.ew_link[self.wet_pwet_links] *
@@ -1919,11 +2017,16 @@ class TurbidityCurrent2D(Component):
 
         # copy previous values of Ch
         self.Ch_i_prev[:, nodes] = Ch_i[:, nodes]
-
         # Calculate shear velocity
         u_star = np.sqrt(self.Cf_node[nodes] * U_node[nodes] * U_node[nodes])
+        # with open('shear3.csv', 'a') as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow(u_star)
+
+
 
         # Calculate entrainment rate
+        
         self.es[:, nodes] = get_es(
             self.R,
             self.g,
@@ -1932,10 +2035,11 @@ class TurbidityCurrent2D(Component):
             u_star,
             function=self.sed_entrainment_func,
         )
-
+        
         # Calculate the change of volume of suspended sediment
         # Settling is solved explicitly, and entrainment is
         # solved semi-implicitly
+        
         out_Ch_i[:, nodes] = (
             Ch_i[:, nodes]
             + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt
@@ -1944,14 +2048,14 @@ class TurbidityCurrent2D(Component):
 
         # Obtain sedimentation rate
         self.bed_change_i[:, nodes] = self.Ch_i_prev[:,
-                                                     nodes] - out_Ch_i[:, nodes]
+                                                    nodes] - out_Ch_i[:, nodes]
         # self.bed_change_i[:, nodes] = 0.0
 
         # if erosion is forbidden, out_Ch_i is modified
         if self.no_erosion is True:
             eroded_region = np.sum(self.bed_change_i[:, nodes], axis=0) < 0.0
             out_Ch_i[:, nodes[eroded_region]
-                     ] = self.Ch_i_prev[:, nodes[eroded_region]]
+                    ] = self.Ch_i_prev[:, nodes[eroded_region]]
             self.bed_change_i[:, nodes[eroded_region]] = 0.0
 
         # Apply diffusion to avoid slope steeper than angle of repose
@@ -1967,6 +2071,18 @@ class TurbidityCurrent2D(Component):
         #         * np.sum(self.bed_change_i[:, nodes], axis=0)
         #     )
         # )
+
+        # active layer fraction
+        # two-step adams-bashforth method
+        # pdb.set_trace()
+        # prev_active_layer = self.bed_active_layer[:, nodes]
+        # prev_der_active_layer = self.der_active_layer
+        # der_active_layer = self.bed_change_i[:,nodes]/self.la - prev_active_layer/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
+        # self.bed_active_layer[:, nodes] = self.bed_active_layer[:, nodes] + (3/2 * der_active_layer - 1/2 * prev_der_active_layer)*dt
+
+        # self.der_active_layer = der_active_layer
+
+
         self.bed_active_layer[:, nodes] += 1 / \
             self.la * self.bed_change_i[:, nodes]
         self.bed_active_layer[:, nodes] /= 1 + 1 / self.la * np.sum(

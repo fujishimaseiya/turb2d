@@ -737,7 +737,7 @@ def nth_horizontal_link(shape, links):
     >>> nth_horizontal_link(shape, (1, 7, 8))
     array([1, 3, 4])
     """
-    links = np.asarray(links, dtype=np.int)
+    links = np.asarray(links, dtype=np.int64)
     return as_id_array(
         (links // (2 * shape[1] - 1)) * (shape[1] - 1) + links % (2 * shape[1] - 1)
     )
