@@ -10,9 +10,11 @@ from osgeo import gdal, gdalconst
 from scipy.ndimage import median_filter
 from landlab import FieldError
 from decimal import Decimal
-
+import os
+import yaml
 
 def create_topography(
+    config_file=None,
     length=8000,
     width=2000,
     spacing=20,
@@ -27,7 +29,7 @@ def create_topography(
     noise=0.01,
 ):
     """create an artificial topography where a turbidity current flow down
-       A slope and a flat basn plain are set in calculation domain, and a
+       A slope and a flat basin plain are set in calculation domain, and a
        parabola or v-shaped canyon is created in the slope.
 
        Parameters
@@ -78,6 +80,21 @@ def create_topography(
 
 
     """
+    if os.path.exists(config_file):
+        with open(config_file) as yml:
+            config = yaml.safe_load(yml)
+        length=config['grid']['length']
+        width=config['grid']['width']
+        spacing=config['grid']['spacing']
+        slope_outside=config['grid']['slope_outside']
+        slope_inside=config['grid']['slope_inside']
+        slope_basin=config['grid']['slope_basin']
+        slope_basin_break=config['grid']['slope_basin_break']
+        canyon_basin_break=config['grid']['canyon_basin_break']
+        canyon_center=config['grid']['canyon_center']
+        canyon_half_width=config['grid']['canyon_half_width']
+        canyon=config['grid']['canyon']
+        noise=config['grid']['noise']
     # making grid
     # size of calculation domain is 4 x 8 km with dx = 20 m
     length = Decimal(str(length))

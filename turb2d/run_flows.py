@@ -9,7 +9,7 @@ import signal
 import sys
 import warnings
 from tqdm import tqdm
-
+import yaml
 import time
 import multiprocessing as mp
 import netCDF4
@@ -22,9 +22,10 @@ class RunMultiFlows():
     """
     def __init__(
             self,
-            dirpath,
-            filename,
+            dirpath = "",
+            filename = "num_3000.nc",
             C_ini=0.01,
+            config_file=None,
             U_ini=0.01,
             r_ini=100,
             h_ini=100,
@@ -35,20 +36,82 @@ class RunMultiFlows():
             timelimit=None,
             repeat = 1
     ):
+        if config_file is None:
+            self.C_ini = C_ini
+            self.U_ini = U_ini
+            self.r_ini = r_ini
+            self.h_ini = h_ini
+            self.filename = filename
+            self.dirpath = dirpath
+            self.num_runs = len(C_ini)
+            self.processors = processors
+            self.endtime = endtime
+            self.flow_type = flow_type
+            self.timelimit = timelimit
+            self.grain_class_num = grain_class_num
+            self.repeat = repeat
+        else:
+            with open(config_file, 'r') as yml:
+                config = yaml.safe_load(yml)
 
-        self.C_ini = C_ini
-        self.U_ini = U_ini
-        self.r_ini = r_ini
-        self.h_ini = h_ini
-        self.filename = filename
-        self.dirpath = dirpath
-        self.num_runs = len(C_ini)
-        self.processors = processors
-        self.endtime = endtime
-        self.flow_type = flow_type
-        self.timelimit = timelimit
-        self.grain_class_num = grain_class_num
-        self.repeat = repeat
+            num_runs = config['run_param']["num_runs"]
+            Cmin, Cmax = [config['run_param']["Cmin"], config['run_param']["Cmax"]]
+            Umin, Umax = [config['run_param']["Umin"], config['run_param']["Umax"]]
+            endmin,endmax = [config['run_param']['endmin'], config['run_param']['endmax']]
+            saltmin, saltmax = [config['run_param']['saltmin'], config['run_param']['saltmax']]
+            if len(config['flow']['Ds'])==1:
+                C_ini = np.random.uniform(Cmin, Cmax, num_runs)
+            elif len(config['flow']['Ds'])>=2:
+                C_ini=[]
+                for i in range(num_runs):
+                    conc = np.random.uniform(Cmin, Cmax, 4)
+                    salt = np.array([np.random.uniform(saltmin, saltmax)])
+                    C_ini.append(np.append(conc, salt))
+            np.savetxt(os.path.join(dirpath, 'C_ini.csv'), C_ini, delimiter=',')
+
+            if config['run_param']["hmin"] == config['run_param']["hmax"]:
+                h_ini = np.full(num_runs, config['run_param']["hmin"])
+            else:
+                h_ini = np.random.uniform(config['run_param']['hmin'], config['run_param']['hmax'], num_runs)
+            np.savetxt(os.path.join(dirpath, 'h_ini.csv'), h_ini, delimiter=',')
+            
+            if config['run_param']['rmin'] is None:
+                r_ini = np.empty((num_runs, ))
+                r_ini[:] = np.nan
+            elif config['run_param']['rmin'] == config['run_param']['rmax']:
+                r_ini = np.full(num_runs, config['run_param']["rmin"])
+            else:
+                r_ini = np.random.uniform(config['run_param']['rmin'], config['run_param']['rmax'], num_runs)
+            np.savetxt(os.path.join(dirpath, 'r_ini.csv'), r_ini, delimiter=',')
+
+            if config['run_param']["Umin"] == config['run_param']["Umax"]:
+                U_ini = np.full(num_runs, config['run_param']["Umin"])
+            else:
+                U_ini =np.random.uniform(config['run_param']['Umin'], config['run_param']['Umax'], num_runs)
+            np.savetxt(os.path.join(dirpath, 'U_ini.csv'), U_ini, delimiter=',')
+            
+            if config['run_param']["endmin"] == config['run_param']["endmax"]:
+                endtime = np.full(num_runs, config['run_param']["endmin"])
+            else:
+                endtime = np.random.randint(config['run_param']['endmin'], config['run_param']['endmax'], num_runs)
+            np.savetxt(os.path.join(dirpath, 'endtime.csv'), endtime, delimiter=',')
+
+            self.C_ini = C_ini
+            self.U_ini = U_ini
+            self.r_ini = r_ini
+            self.h_ini = h_ini
+            self.endtime = endtime
+            self.filename = filename
+            self.config_file = config_file
+            self.dirpath = dirpath
+            self.num_runs = config['run_param']['num_runs']
+            self.processors = config['run_param']['processors']
+            self.flow_type = config['run_param']['flow_type']
+            self.timelimit = config['run_param']['timelimit']
+            self.grain_class_num = config['run_param']['grain_class_num']
+            self.repeat = config['run_param']['repeat']
+
+
         # self.num_runs = C_ini.shape[0]
 
     # def set_init(self, val_1 = [0.0001, 0.01], val_2=[50., 200.],val_3=[]):
@@ -115,17 +178,7 @@ class RunMultiFlows():
     def produce_continuous_flow(self, C_ini, U_ini, h_ini):
 
         grid = create_topography(
-            length=4.5,
-            width=1.9,
-            spacing=0.05,
-            slope_outside=0.1,
-            slope_inside=0.1,
-            slope_basin=0.05,
-            slope_basin_break=2,
-            canyon_basin_break=2.2,
-            canyon_center=0.11,
-            canyon_half_width=1.,
-            noise=0
+            config_file=self.config_file
         )
         
         grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
@@ -136,7 +189,7 @@ class RunMultiFlows():
         # set inlet
         inlet = np.where((grid.x_of_node > 0.63)
                         & (grid.x_of_node < 1.27) & (grid.y_of_node > 4.2))
-        inlet_link = np.where((grid.midpoint_of_link[:,0] > 0.645) & (grid.midpoint_of_link[:,0] < 1.27)
+        inlet_link = np.where((grid.midpoint_of_link[:,0] > 0.63) & (grid.midpoint_of_link[:,0] < 1.27)
                         & (grid.midpoint_of_link[:,1] > 4.2))
 
         # check number of grain size classes
@@ -193,27 +246,8 @@ class RunMultiFlows():
         grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
 # Ds = 0.625, 1.875, 3.125, 4.375 phi
         tc = TurbidityCurrent2D(grid,
-                                Cf=0.004,
-                                R=0.49,
-                                alpha=0.4,
-                                kappa=0.05,
-                                nu_a=0.75,
-                                Ds=np.array([2.10*10**-4, 1.49*10**-4, 1.05*10**-4, 7.43*10**-5, 4.0*10**-6]),
-                                h_init=0.0,
-                                Ch_w=10**(-5),
-                                h_w=0.001,
-                                C_init=0.0,
-                                implicit_num=100,
-                                implicit_threshold=1.0 * 10**-10,
-                                r0=1.5,
-                                sed_entrainment_func="GP1991exp",
-                                water_entrainment=True,
-                                suspension=True,
-                                no_erosion=False,
-                                salt=True,
-                                alpha_4eq=0.6,
-                                la=0.003,
-                                model='3eq')
+                                config_path=self.config_file
+                                )
 
         return tc
 

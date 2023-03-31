@@ -19,7 +19,7 @@ import numpy as np
 import time
 from tqdm import tqdm
 import pdb
-import csv
+import yaml
 
 """A component of landlab that simulates a turbidity current on 2D grids
 
@@ -132,6 +132,7 @@ class TurbidityCurrent2D(Component):
     def __init__(
         self,
         grid,
+        config_path=None,
         h_init=0.0,
         Ch_w=10 ** (-4),
         h_w=0.01,
@@ -224,37 +225,73 @@ class TurbidityCurrent2D(Component):
         self._grid = grid
 
         # Copy model parameters
-        self.h_init = h_init
-        self.alpha = alpha
-        self.Cf = Cf
-        self.g = g
-        self.R = R
-        if type(Ds) is float:
-            self.Ds = np.array([Ds]).reshape(1, 1)
+        if config_path is None:
+            self.h_init = h_init
+            self.alpha = alpha
+            self.Cf = Cf
+            self.g = g
+            self.R = R
+            if type(Ds) is float:
+                self.Ds = np.array([Ds]).reshape(1, 1)
+            else:
+                self.Ds = np.array(Ds).reshape(len(Ds), 1)
+            self.number_gclass = len(self.Ds)
+            self.Ch_w = Ch_w
+            self.h_w = h_w
+            self.nu = nu
+            self.kappa = kappa
+            self.nu_a = nu_a
+            self.r0 = r0
+            self.lambda_p = lambda_p
+            self.implicit_num = implicit_num
+            self.implicit_threshold = implicit_threshold
+            self.C_init = C_init
+            self.gamma = gamma
+            self.la = la
+            self.water_entrainment = water_entrainment
+            self.suspension = suspension
+            self.sed_entrainment_func = sed_entrainment_func
+            self.model = model
+            self.karman = 0.4
+            self.no_erosion = no_erosion
+            self.der_active_layer = 0
+            self.salt = salt
+            self.alpha_4eq = alpha_4eq
         else:
-            self.Ds = np.array(Ds).reshape(len(Ds), 1)
-        self.number_gclass = len(self.Ds)
-        self.Ch_w = Ch_w
-        self.h_w = h_w
-        self.nu = nu
-        self.kappa = kappa
-        self.nu_a = nu_a
-        self.r0 = r0
-        self.lambda_p = lambda_p
-        self.implicit_num = implicit_num
-        self.implicit_threshold = implicit_threshold
-        self.C_init = C_init
-        self.gamma = gamma
-        self.la = la
-        self.water_entrainment = water_entrainment
-        self.suspension = suspension
-        self.sed_entrainment_func = sed_entrainment_func
-        self.model = model
-        self.karman = 0.4
-        self.no_erosion = no_erosion
-        self.der_active_layer = 0
-        self.salt = salt
-        self.alpha_4eq = alpha_4eq
+            with open(config_path) as yml:
+                config = yaml.safe_load(yml)
+            self.h_init = config['flow']['h_init']
+            self.alpha = config['flow']['alpha']
+            self.Cf = config['flow']['Cf']
+            self.g = config['flow']['g']
+            self.R = config['flow']['R']
+            if type(config['flow']['Ds']) is float:
+                self.Ds = np.array(config['flow']['Ds']).reshape(1, 1)
+            else:
+                # FIXME how explain list in yaml?
+                self.Ds = np.array(config['flow']['Ds']).reshape(len(config['flow']['Ds']), 1)
+            self.number_gclass = len(self.Ds)
+            self.Ch_w = config['flow']['Ch_w']
+            self.h_w = config['flow']['h_w']
+            self.nu = config['flow']['nu']
+            self.kappa = config['flow']['kappa']
+            self.nu_a = config['flow']['nu_a']
+            self.r0 = config['flow']['r0']
+            self.lambda_p = config['flow']['lambda_p']
+            self.implicit_num = config['flow']['implicit_num']
+            self.implicit_threshold = config['flow']['implicit_threshold']
+            self.C_init = config['flow']['C_init']
+            self.gamma = config['flow']['gamma']
+            self.la = config['flow']['la']
+            self.water_entrainment = config['flow']['water_entrainment']
+            self.suspension = config['flow']['suspension']
+            self.sed_entrainment_func = config['flow']['sed_entrainment_func']
+            self.model = config['flow']['model']
+            self.karman = config['flow']['karman']
+            self.no_erosion = config['flow']['no_erosion']
+            self.der_active_layer = 0
+            self.salt = config['flow']['salt']
+            self.alpha_4eq = config['flow']['alpha_4eq']
 
         # Now setting up fields at nodes and links
         try:
