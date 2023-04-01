@@ -244,7 +244,7 @@ class RunMultiFlows():
         grid.at_link['flow__horizontal_velocity'][inlet_link] = 0.0
         grid.at_link['flow__vertical_velocity'][inlet_link] = -U_ini
         grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
-# Ds = 0.625, 1.875, 3.125, 4.375 phi
+        
         tc = TurbidityCurrent2D(grid,
                                 config_path=self.config_file
                                 )
@@ -433,7 +433,7 @@ class RunMultiFlows():
         if self.flow_type == 'surge':
             tc = self.produce_surge_flow(C_list, 100, 100)
         elif self.flow_type == 'continuous':
-            tc = self.produce_continuous_flow(C_list, 1, 100)
+            tc = self.produce_continuous_flow(C_list, 1, 1)
         grid_x = tc.grid.nodes.shape[0]
         grid_y = tc.grid.nodes.shape[1]
         dx = tc.grid.dx
