@@ -10,3 +10,5 @@ turb2d.egg-info/
 *.lprof
 
 turb2d/__pycache__/
+
+*.yml
