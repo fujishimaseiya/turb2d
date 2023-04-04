@@ -15,7 +15,7 @@ import multiprocessing as mp
 import netCDF4
 from landlab.io.native_landlab import save_grid
 from landlab import FieldError
-
+import pdb
 
 class RunMultiFlows():
     """A class to run multiple flows for conducting inverse analysis
@@ -34,7 +34,8 @@ class RunMultiFlows():
             endtime=1000,
             flow_type='surge',
             timelimit=None,
-            repeat = 1
+            repeat = 1,
+            flow_param=False
     ):
         if config_file is None:
             self.C_ini = C_ini
@@ -50,6 +51,7 @@ class RunMultiFlows():
             self.timelimit = timelimit
             self.grain_class_num = grain_class_num
             self.repeat = repeat
+            self.flow_param = flow_param
         else:
             with open(config_file, 'r') as yml:
                 config = yaml.safe_load(yml)
@@ -57,8 +59,11 @@ class RunMultiFlows():
             num_runs = config['run_param']["num_runs"]
             Cmin, Cmax = [config['run_param']["Cmin"], config['run_param']["Cmax"]]
             Umin, Umax = [config['run_param']["Umin"], config['run_param']["Umax"]]
+            hmin, hmax = [config['run_param']["hmin"], config['run_param']["hmax"]]
+            rmin, rmax = [config['run_param']["rmin"], config['run_param']["rmax"]]
             endmin,endmax = [config['run_param']['endmin'], config['run_param']['endmax']]
             saltmin, saltmax = [config['run_param']['saltmin'], config['run_param']['saltmax']]
+
             if len(config['flow']['Ds'])==1:
                 C_ini = np.random.uniform(Cmin, Cmax, num_runs)
             elif len(config['flow']['Ds'])>=2:
@@ -69,31 +74,31 @@ class RunMultiFlows():
                     C_ini.append(np.append(conc, salt))
             np.savetxt(os.path.join(dirpath, 'C_ini.csv'), C_ini, delimiter=',')
 
-            if config['run_param']["hmin"] == config['run_param']["hmax"]:
-                h_ini = np.full(num_runs, config['run_param']["hmin"])
+            if hmin == hmax:
+                h_ini = np.full(num_runs, hmin)
             else:
-                h_ini = np.random.uniform(config['run_param']['hmin'], config['run_param']['hmax'], num_runs)
+                h_ini = np.random.uniform(hmin, hmax, num_runs)
             np.savetxt(os.path.join(dirpath, 'h_ini.csv'), h_ini, delimiter=',')
             
-            if config['run_param']['rmin'] is None:
+            if rmin is None:
                 r_ini = np.empty((num_runs, ))
                 r_ini[:] = np.nan
-            elif config['run_param']['rmin'] == config['run_param']['rmax']:
-                r_ini = np.full(num_runs, config['run_param']["rmin"])
+            elif rmin == rmax:
+                r_ini = np.full(num_runs, rmin)
             else:
-                r_ini = np.random.uniform(config['run_param']['rmin'], config['run_param']['rmax'], num_runs)
+                r_ini = np.random.uniform(rmin, rmax, num_runs)
             np.savetxt(os.path.join(dirpath, 'r_ini.csv'), r_ini, delimiter=',')
 
-            if config['run_param']["Umin"] == config['run_param']["Umax"]:
-                U_ini = np.full(num_runs, config['run_param']["Umin"])
+            if Umax == Umin:
+                U_ini = np.full(num_runs, Umin)
             else:
-                U_ini =np.random.uniform(config['run_param']['Umin'], config['run_param']['Umax'], num_runs)
+                U_ini =np.random.uniform(Umin, Umax, num_runs)
             np.savetxt(os.path.join(dirpath, 'U_ini.csv'), U_ini, delimiter=',')
             
-            if config['run_param']["endmin"] == config['run_param']["endmax"]:
-                endtime = np.full(num_runs, config['run_param']["endmin"])
+            if endmin == endmax:
+                endtime = np.full(num_runs, endmin)
             else:
-                endtime = np.random.randint(config['run_param']['endmin'], config['run_param']['endmax'], num_runs)
+                endtime = np.random.randint(endmin, endmax, num_runs)
             np.savetxt(os.path.join(dirpath, 'endtime.csv'), endtime, delimiter=',')
 
             self.C_ini = C_ini
@@ -332,12 +337,27 @@ class RunMultiFlows():
             tc.grid.at_node['bed__sediment_volume_per_unit_area_{}'.format(i)]    
             )
         )
+        
+        layer_ave_vel = tc.grid.node_vector_to_raster(
+            tc.grid.at_node['flow__vertical_velocity_at_node'])
+        
+        flow_depth = tc.grid.node_vector_to_raster(
+            tc.grid.at_node['flow__depth'])
+        
+        layer_ave_conc = []
+        for i in range(grain_class_num):
+            layer_ave_conc.append(
+            tc.grid.node_vector_to_raster(
+            tc.grid.at_node['flow__sediment_concentration_{}'.format(i)]    
+            )
+        )
+        
 
-        self.save_data(init_values, bed_thick, sed_volume_per_unit_area)
+        self.save_data(init_values, bed_thick, sed_volume_per_unit_area, layer_ave_vel, layer_ave_conc, flow_depth)
 
         print('Run no. {} finished'.format(init_values[0]))
 
-    def save_data(self, init_values, bed_thick_i, sed_volume_per_unit_area_i):
+    def save_data(self, init_values, bed_thick_i, sed_volume_per_unit_area_i, layer_ave_vel, layer_ave_conc, flow_depth):
         """Save result to a data file.
         """
 
@@ -373,6 +393,8 @@ class RunMultiFlows():
             U_ini_i = init_values[2]
             h_ini_i = init_values[3]
             endtime_i = init_values[4]
+            U_i = layer_ave_vel
+            h_i = flow_depth
 
             dfile = netCDF4.Dataset(self.filename, 'a', share=True)
             C_ini = dfile.variables['C_ini']
@@ -380,15 +402,24 @@ class RunMultiFlows():
             h_ini = dfile.variables['h_ini']
             endtime = dfile.variables['endtime']
             bed_thick = dfile.variables['bed_thick']
+            U = dfile.variables['layer_ave_vel']
+            h = dfile.variables['flow_depth']
 
             C_ini[run_id] = C_ini_i
             U_ini[run_id] = U_ini_i
             h_ini[run_id] = h_ini_i
             endtime[run_id] = endtime_i
             bed_thick[run_id, :, :] = bed_thick_i
+            U[run_id] = U_i
+            h[run_id] = h_i
+
             for i in range(grain_class_num):
                 sed_volume_per_unit_area = dfile.variables['sed_volume_per_unit_area_{}'.format(i)]
                 sed_volume_per_unit_area[run_id, :, :] = sed_volume_per_unit_area_i[i]
+
+            for j in range(grain_class_num):
+                C = dfile.variables['layer_ave_conc_{}'.format(j)]
+                C[run_id, :, :] = layer_ave_conc[j]
 
             dfile.close()
 
@@ -437,7 +468,18 @@ class RunMultiFlows():
         grid_x = tc.grid.nodes.shape[0]
         grid_y = tc.grid.nodes.shape[1]
         dx = tc.grid.dx
-
+        Cf = tc.Cf
+        alpha_4eq = tc.alpha_4eq
+        r0 = tc.r0
+        # どこのu, c, h?どうやって指定する？ grid.at_node_vectortorasterやるとgrid形状になるのか？
+        # そうすれば、すべて保存して訓練時に指定するようにすればいけるかな
+        # もしくは保存時にデータポイントを指定する
+        # U_obs =tc.v_node
+        # C0_obs = tc.C_i[0, :]
+        # C1_obs = tc.C_i[1, :]
+        # C2_obs = tc.C_i[2, :]
+        # C3_obs = tc.C_i[3, :]
+        # h_obs = tc.h
         # record dataset in a netCDF4 file
         datafile = netCDF4.Dataset(self.filename, 'w')
         datafile.createDimension('run_no', num_runs)
@@ -446,6 +488,9 @@ class RunMultiFlows():
         datafile.createDimension('basic_setting', 1)
         datafile.createDimension('num_gs', self.grain_class_num)
         datafile.createDimension('repeat', self.repeat)
+        # datafile.createDimension('Cf', Cf)
+        # datafile.createDimension('4eq_alpha', alpha_4eq)
+        # datafile.createDimension('r0', r0)
 
         spacing = datafile.createVariable('spacing',
                                           np.dtype('float64').char,
@@ -481,8 +526,8 @@ class RunMultiFlows():
 
         endtime = datafile.createVariable('endtime',
                                             np.dtype('float64').char,('run_no'))
-        bed_thick.long_name = 'Flow duration'
-        bed_thick.units = 's'
+        endtime.long_name = 'Flow duration'
+        endtime.units = 's'
 
         for i in range(self.grain_class_num):
             sed_volume_per_unit_area = datafile.createVariable('sed_volume_per_unit_area_{}'.format(i),
@@ -491,6 +536,22 @@ class RunMultiFlows():
             sed_volume_per_unit_area.long_name = 'sediment_volume_per_unit_area_{}'.format(i)
             sed_volume_per_unit_area.units = 'm'
 
+        layer_ave_vel = datafile.createVariable('layer_ave_vel', np.dtype('float64').char,
+                                                ('run_no', 'grid_x', 'grid_y'))
+        layer_ave_vel.long_name = 'layer averaged velocity'
+        layer_ave_vel.units = 'm/s'
+
+        for i in range(self.grain_class_num):
+            layer_ave_conc = datafile.createVariable('layer_ave_conc_{}'.format(i),
+                                                np.dtype('float64').char,
+                                                ('run_no', 'grid_x', 'grid_y'))
+            layer_ave_conc.long_name = 'Layer averaged concentration_{}'.format(i)
+            layer_ave_conc.units = 'dimensionless'
+
+        flow_depth = datafile.createVariable('flow_depth',
+                                        np.dtype('float64').char, ('run_no', 'grid_x', 'grid_y'))
+        flow_depth.long_name = 'Flow depth'
+        flow_depth.units = 'm'
         # close dateset
         datafile.close()
 

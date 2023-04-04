@@ -10,7 +10,7 @@ import shutil
 import pdb
 import yaml
 
-# pdb.set_trace()
+pdb.set_trace()
 if __name__ ==  '__main__':
     dirpath = "."
     dirname = "yaml_test"
