@@ -63,6 +63,9 @@ class RunMultiFlows():
             rmin, rmax = [config['run_param']["rmin"], config['run_param']["rmax"]]
             endmin,endmax = [config['run_param']['endmin'], config['run_param']['endmax']]
             saltmin, saltmax = [config['run_param']['saltmin'], config['run_param']['saltmax']]
+            Cfmin, Cfmax = [config['run_param']['Cfmin'], config['run_param']['Cfmax']]
+            alpha_4eqmin, alpha_4eqmax = [config['run_param']['alpha_4eqmin'], config['run_param']['alpha_4eqmax']]
+            r0min, r0max = [config['run_param']['r0min'], config['run_param']['r0max']]
 
             if len(config['flow']['Ds'])==1:
                 C_ini = np.random.uniform(Cmin, Cmax, num_runs)
@@ -101,14 +104,36 @@ class RunMultiFlows():
                 endtime = np.random.randint(endmin, endmax, num_runs)
             np.savetxt(os.path.join(dirpath, 'endtime.csv'), endtime, delimiter=',')
 
+            if Cfmin == Cfmax:
+                Cf = np.full(num_runs, Cfmin)
+            else:
+                Cf = np.random.uniform(Cfmin, Cfmax, num_runs)
+            np.savetxt(os.path.join(dirpath, 'Cf.csv'), Cf, delimiter=',')
+
+            if alpha_4eqmin == alpha_4eqmax:
+                alpha_4eq = np.full(num_runs, alpha_4eqmin)
+            else:
+                alpha_4eq = np.random.uniform(alpha_4eqmin, alpha_4eqmax, num_runs)
+            np.savetxt(os.path.join(dirpath,"alpha_4eq.csv"), alpha_4eq, delimiter=',')
+
+            if r0min == r0max:
+                r0 = np.full(num_runs, r0min)
+            else:
+                r0 = np.random.uniform(r0min, r0max, num_runs)
+            np.savetxt(os.path.join(dirpath, "r0.csv"), r0, delimiter=',')
+
             self.C_ini = C_ini
             self.U_ini = U_ini
             self.r_ini = r_ini
             self.h_ini = h_ini
             self.endtime = endtime
+            self.alpha_4eq = alpha_4eq
+            self.Cf = Cf
+            self.r0 = r0
             self.filename = filename
             self.config_file = config_file
             self.dirpath = dirpath
+            self.config = config
             self.num_runs = config['run_param']['num_runs']
             self.processors = config['run_param']['processors']
             self.flow_type = config['run_param']['flow_type']
@@ -180,7 +205,7 @@ class RunMultiFlows():
 
         return tc
 
-    def produce_continuous_flow(self, C_ini, U_ini, h_ini):
+    def produce_continuous_flow(self, C_ini, U_ini, h_ini, cf_ini, alpha4eq_ini, r0_ini):
 
         grid = create_topography(
             config_file=self.config_file
@@ -251,7 +276,31 @@ class RunMultiFlows():
         grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
         
         tc = TurbidityCurrent2D(grid,
-                                config_path=self.config_file
+                                h_init=self.config["flow"]["h_init"],
+                                Ch_w=self.config["flow"]["Ch_w"],
+                                h_w=self.config["flow"]["h_w"],
+                                alpha=self.config["flow"]["alpha"],
+                                Cf=cf_ini,
+                                g=self.config["flow"]["g"],
+                                R=self.config["flow"]["R"],
+                                Ds=self.config["flow"]["Ds"],
+                                lambda_p=self.config["flow"]["lambda_p"],
+                                r0=r0_ini,
+                                nu=self.config["flow"]["nu"],
+                                kappa=self.config["flow"]["kappa"],
+                                nu_a=self.config["flow"]["nu_a"],
+                                implicit_num=self.config["flow"]["implicit_num"],
+                                implicit_threshold=self.config["flow"]["implicit_threshold"],
+                                C_init=self.config["flow"]["C_init"],
+                                gamma=self.config["flow"]["gamma"],
+                                la=self.config["flow"]["la"],
+                                water_entrainment=self.config["flow"]["water_entrainment"],
+                                suspension=self.config["flow"]["suspension"],
+                                sed_entrainment_func=self.config["flow"]["sed_entrainment_func"],
+                                no_erosion=self.config["flow"]["no_erosion"],
+                                salt = self.config["flow"]["salt"],
+                                model=self.config["flow"]["model"],
+                                alpha_4eq = alpha4eq_ini
                                 )
 
         return tc
@@ -265,7 +314,8 @@ class RunMultiFlows():
         if self.flow_type == 'surge':
             tc = self.produce_surge_flow(init_values[1], init_values[2], init_values[3])
         elif self.flow_type == 'continuous':
-            tc = self.produce_continuous_flow(init_values[1], init_values[2], init_values[3])
+            tc = self.produce_continuous_flow(init_values[1], init_values[2], init_values[3], 
+                                                init_values[5], init_values[6],init_values[7])
 
         # Run the model until endtime or 99% sediment settled
         Ch_init = np.sum(tc.Ch)
@@ -353,11 +403,19 @@ class RunMultiFlows():
         )
         
 
-        self.save_data(init_values, bed_thick, sed_volume_per_unit_area, layer_ave_vel, layer_ave_conc, flow_depth)
+        self.save_data(init_values, 
+                        bed_thick, 
+                        sed_volume_per_unit_area, 
+                        layer_ave_vel,
+                        layer_ave_conc, flow_depth,
+                        tc.Cf,
+                        tc.alpha_4eq,
+                        tc.r0)
 
         print('Run no. {} finished'.format(init_values[0]))
 
-    def save_data(self, init_values, bed_thick_i, sed_volume_per_unit_area_i, layer_ave_vel, layer_ave_conc, flow_depth):
+    def save_data(self, init_values, bed_thick_i, sed_volume_per_unit_area_i, 
+                layer_ave_vel, layer_ave_conc, flow_depth, Cf, alpha_4eq, r0):
         """Save result to a data file.
         """
 
@@ -395,6 +453,9 @@ class RunMultiFlows():
             endtime_i = init_values[4]
             U_i = layer_ave_vel
             h_i = flow_depth
+            Cf_i = Cf
+            alpha4eq_i = alpha_4eq
+            r0_i = r0
 
             dfile = netCDF4.Dataset(self.filename, 'a', share=True)
             C_ini = dfile.variables['C_ini']
@@ -404,6 +465,9 @@ class RunMultiFlows():
             bed_thick = dfile.variables['bed_thick']
             U = dfile.variables['layer_ave_vel']
             h = dfile.variables['flow_depth']
+            Cf = dfile.variables['Cf']
+            alpha_4eq = dfile.variables['alpha_4eq']
+            r0 = dfile.variables['r0']
 
             C_ini[run_id] = C_ini_i
             U_ini[run_id] = U_ini_i
@@ -412,6 +476,9 @@ class RunMultiFlows():
             bed_thick[run_id, :, :] = bed_thick_i
             U[run_id] = U_i
             h[run_id] = h_i
+            Cf[run_id] = Cf_i
+            alpha_4eq[run_id] = alpha4eq_i
+            r0[run_id] = r0_i
 
             for i in range(grain_class_num):
                 sed_volume_per_unit_area = dfile.variables['sed_volume_per_unit_area_{}'.format(i)]
@@ -442,11 +509,14 @@ class RunMultiFlows():
             U_ini = self.U_ini
             h_ini = self.h_ini
             endtime = self.endtime
+            Cf = self.Cf
+            alpha_4eq = self.alpha_4eq
+            r0 = self.r0
 
             # Create list of initial values
             init_value_list = list()
             for i in range(len(C_ini)):
-                init_value_list.append([i, C_ini[i], U_ini[i], h_ini[i],endtime[i]])
+                init_value_list.append([i, C_ini[i], U_ini[i], h_ini[i],endtime[i], Cf[i],alpha_4eq[i], r0[i]])
 
         # run flows using multiple processors
         pool = mp.Pool(self.processors)
@@ -464,13 +534,10 @@ class RunMultiFlows():
         if self.flow_type == 'surge':
             tc = self.produce_surge_flow(C_list, 100, 100)
         elif self.flow_type == 'continuous':
-            tc = self.produce_continuous_flow(C_list, 1, 1)
+            tc = self.produce_continuous_flow(C_list, 1, 1, 0.004, 0.1, 1.5)
         grid_x = tc.grid.nodes.shape[0]
         grid_y = tc.grid.nodes.shape[1]
         dx = tc.grid.dx
-        Cf = tc.Cf
-        alpha_4eq = tc.alpha_4eq
-        r0 = tc.r0
         # どこのu, c, h?どうやって指定する？ grid.at_node_vectortorasterやるとgrid形状になるのか？
         # そうすれば、すべて保存して訓練時に指定するようにすればいけるかな
         # もしくは保存時にデータポイントを指定する
@@ -488,9 +555,6 @@ class RunMultiFlows():
         datafile.createDimension('basic_setting', 1)
         datafile.createDimension('num_gs', self.grain_class_num)
         datafile.createDimension('repeat', self.repeat)
-        # datafile.createDimension('Cf', Cf)
-        # datafile.createDimension('4eq_alpha', alpha_4eq)
-        # datafile.createDimension('r0', r0)
 
         spacing = datafile.createVariable('spacing',
                                           np.dtype('float64').char,
@@ -552,6 +616,19 @@ class RunMultiFlows():
                                         np.dtype('float64').char, ('run_no', 'grid_x', 'grid_y'))
         flow_depth.long_name = 'Flow depth'
         flow_depth.units = 'm'
+
+        Cf = datafile.createVariable('Cf', np.dtype('float64').char, ('run_no'))
+        Cf.long_name = 'Dimensionless Chezy friction coefficient'
+        Cf.units = "dimensionless"
+
+        alpha_4eq = datafile.createVariable('alpha_4eq', np.dtype('float64').char, ('run_no'))
+        alpha_4eq.long_name = 'Coefficient of K in 4eq'
+        alpha_4eq.units = "dimensionless"
+
+        r0 = datafile.createVariable('r0', np.dtype('float64').char, ('run_no'))
+        r0.long_name = 'Ratio of the near-bed concentration to the layer-averaged concentration'
+        r0.units = "dimensionless"
+
         # close dateset
         datafile.close()
 
