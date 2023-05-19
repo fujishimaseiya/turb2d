@@ -1536,7 +1536,6 @@ class TurbidityCurrent2D(Component):
         #     * self.ew_link[self.wet_pwet_links]
         #     * self.U_temp[self.wet_pwet_links] ** 3
         #     - beta * K ** 1.5
-
         self.Kh_temp[self.wet_pwet_links] += self.dt_local * (
             (self.Cf + 0.5 * self.ew_link[self.wet_pwet_links])
             * self.U_temp[self.wet_pwet_links]
@@ -2052,14 +2051,20 @@ class TurbidityCurrent2D(Component):
         # self.bed_change_i[:, nodes] = 0.0
 
         # if erosion is forbidden, out_Ch_i is modified
+        # pdb.set_trace()
+        # 各粒径階ごとに侵食判定を行う
+        # 各粒径階ごとにeroded regionを作成
+        # 侵食された粒径階だけ流れに戻す
+        # 侵食された粒径階のbed changeを0にする
         if self.no_erosion is True:
-            eroded_region = np.sum(self.bed_change_i[:, nodes], axis=0) < 0.0
-            out_Ch_i[:, nodes[eroded_region]
-                    ] = self.Ch_i_prev[:, nodes[eroded_region]]
-            self.bed_change_i[:, nodes[eroded_region]] = 0.0
+            for i in range(self.bed_change_i.shape[0]):
+                eroded_region = self.bed_change_i[i, nodes] < 0.0
+                out_Ch_i[i, nodes[eroded_region]
+                        ] = self.Ch_i_prev[i, nodes[eroded_region]]
+                self.bed_change_i[i, nodes[eroded_region]] = 0.0
 
         # Apply diffusion to avoid slope steeper than angle of repose
-        self._bed_diffusion_at_high_slope()
+        # self._bed_diffusion_at_high_slope()
 
         # Time development of active layer
         # self.bed_active_layer[:, nodes] += (
