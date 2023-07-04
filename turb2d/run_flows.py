@@ -402,7 +402,7 @@ class RunMultiFlows():
             )
         )
         
-
+        lock.acquire()
         self.save_data(init_values, 
                         bed_thick, 
                         sed_volume_per_unit_area, 
@@ -411,7 +411,7 @@ class RunMultiFlows():
                         tc.Cf,
                         tc.alpha_4eq,
                         tc.r0)
-
+        lock.release()
         print('Run no. {} finished'.format(init_values[0]))
 
     def save_data(self, init_values, bed_thick_i, sed_volume_per_unit_area_i, 
@@ -519,10 +519,15 @@ class RunMultiFlows():
                 init_value_list.append([i, C_ini[i], U_ini[i], h_ini[i],endtime[i], Cf[i],alpha_4eq[i], r0[i]])
 
         # run flows using multiple processors
-        pool = mp.Pool(self.processors)
+        l = mp.Lock()
+        pool = mp.Pool(self.processors, initializer=self.init, initaergs=(l,))
         pool.map(self.run_flow, init_value_list)
         pool.close()
         pool.join()
+
+    def init(self, l):
+        global lock
+        lock = l
 
     def create_datafile(self):
 
