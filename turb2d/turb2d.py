@@ -541,6 +541,14 @@ class TurbidityCurrent2D(Component):
             self.dKhdx = grid.at_link["flow_TKE__horizontal_gradient"]
             self.dKhdy = grid.at_link["flow_TKE__vertical_gradient"]
 
+        # try:
+        #     self.Fr = grid.add_zeros(
+        #         "Froude_number", at="link"
+        #     )
+        
+        # except FieldError:
+        #     self.Fr = grid.at_link["Froude_number"]
+
         # record active links
         self.active_link_ids = links.active_link_ids(
             self.grid.shape, self.grid.status_at_node
@@ -861,6 +869,7 @@ class TurbidityCurrent2D(Component):
             u_node=self.u_node,
             v_node=self.v_node,
             eta=self.eta,
+            bed_thick_i=self.bed_thick_i
         )
         update_up_down_links_and_nodes(self)
         self.copy_values_to_temp()
@@ -927,6 +936,33 @@ class TurbidityCurrent2D(Component):
         # Update bed thickness and record results in the grid
         self.elapsed_time += local_elapsed_time
         self.bed_thick = self.eta - self.eta_init
+        import warnings
+        warnings.simplefilter('error')
+        if self.salt is True:
+            for i in range(self.bed_thick_i.shape[0]-1):
+                sed_volume_grad_anchor = np.zeros(len(self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes]))
+                sed_volume_fixed_anchor = np.zeros(len(self.bed_thick_i[i, :][self.fixed_value_anchor_nodes]))
+                for j in range(len(sed_volume_grad_anchor)):
+                    try:
+                        sed_volume_grad_anchor[j] = self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes][j]/self.bed_thick[self.fixed_grad_anchor_nodes][j]
+                    except RuntimeWarning:
+                        sed_volume_grad_anchor[j] = 0
+                for j in range(len(sed_volume_fixed_anchor)):
+                    try:
+                        sed_volume_fixed_anchor[j] = self.bed_thick_i[i, :][self.fixed_value_anchor_nodes][j]/self.bed_thick[self.fixed_value_anchor_nodes][j]
+                    except RuntimeWarning:
+                        sed_volume_fixed_anchor[j] = 0
+                self.bed_thick_i[i, :][self.fixed_grad_nodes] = self.bed_thick[self.fixed_grad_nodes]*sed_volume_grad_anchor
+                self.bed_thick_i[i, :][self.fixed_value_nodes] = self.bed_thick[self.fixed_value_nodes]*sed_volume_fixed_anchor
+
+        elif self.salt is False:
+            for i in range(self.bed_thick_i.shape[0]):
+                sed_volume_fixed_anchor = self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes][j]/self.bed_thick[self.fixed_grad_anchor_nodes][j]
+                sed_volume_fixed_anchor = self.bed_thick_i[i, :][self.fixed_value_anchor_nodes][j]/self.bed_thick[self.fixed_value_anchor_nodes][j]
+                self.bed_thick_i[i, :][self.fixed_grad_nodes] = self.bed_thick[self.fixed_grad_nodes]*sed_volume_grad_anchor
+                self.bed_thick_i[i, :][self.fixed_value_nodes] = self.bed_thick[self.fixed_value_nodes]*sed_volume_fixed_anchor
+
+
         self.copy_values_to_grid()
 
     def _advection_phase(self):
@@ -1286,6 +1322,7 @@ class TurbidityCurrent2D(Component):
             h_link=self.h_link_temp,
             Ch_link=self.Ch_link_temp,
             eta=self.eta_temp,
+            bed_thick_i=self.bed_thick_i_temp
         )
 
     def _momentum_diffusion(self):
@@ -1517,9 +1554,12 @@ class TurbidityCurrent2D(Component):
             U=self.U_temp,
         )
         self.Kh_temp[self.wet_pwet_links[self.Kh_temp[self.wet_pwet_links] < 0]] = 0.0
-
+        # pdb.set_trace()?
+        # self.Fr[self.wet_pwet_links] = self.U[self.wet_pwet_links]/(self.g*self.h_link[self.wet_pwet_links])**0.5
+        # print(Fr)
         # development of turbulent kinetic energy
         alpha = self.alpha_4eq
+        # self.Fr[self.Fr[sel]]
         # Ri = self.R * self.g * self.Ch_link[self.wet_pwet_links] \
         #      / self.U[self.wet_pwet_links] / self.U[self.wet_pwet_links]
         # beta = (0.5 * self.ew_link[self.wet_pwet_links] *
@@ -1536,6 +1576,7 @@ class TurbidityCurrent2D(Component):
         #     * self.ew_link[self.wet_pwet_links]
         #     * self.U_temp[self.wet_pwet_links] ** 3
         #     - beta * K ** 1.5
+        # first-order euler method
         self.Kh_temp[self.wet_pwet_links] += self.dt_local * (
             (self.Cf + 0.5 * self.ew_link[self.wet_pwet_links])
             * self.U_temp[self.wet_pwet_links]
@@ -2112,6 +2153,9 @@ class TurbidityCurrent2D(Component):
                                 axis=0) / self.lambda_p
         )
 
+        # calculation of sediment volume per unit area at boundary
+        # out_bed_thick_i[:]
+
         return out_Ch_i, out_eta, out_bed_thick_i
 
     def _bed_diffusion_at_high_slope(self):
@@ -2273,6 +2317,7 @@ class TurbidityCurrent2D(Component):
             u_node=self.u_node,
             v_node=self.v_node,
             eta=self.eta,
+            bed_thick_i=self.bed_thick_i,
             Kh=self.Kh,
         )
 
@@ -2380,6 +2425,7 @@ class TurbidityCurrent2D(Component):
         u_node=None,
         v_node=None,
         eta=None,
+        bed_thick_i=None,
         p=None,
         Kh=None,
     ):
@@ -2469,6 +2515,33 @@ class TurbidityCurrent2D(Component):
                 self.eta_init[self.fixed_value_nodes]
                 - self.eta_init[self.fixed_value_anchor_nodes]
             )
+
+        # if bed_thick_i is not None:
+        #     for i in range(bed_thick_i.shape[0]):
+        #         bed_thick_i[i, :][self.fixed_grad_nodes] = bed_thick_i[i, :][self.fixed_grad_anchor_nodes]
+
+        # if bed_thick_i is not None:
+        #     if self.salt is True:
+        #         for i in range(bed_thick_i.shape[0]-1):
+        #             bed_thick_i[i, :][self.fixed_grad_nodes] = bed_thick_i[i, :][self.fixed_grad_anchor_nodes] + (
+        #                 self.eta_init[self.fixed_grad_nodes]
+        #                 - self.eta_init[self.fixed_grad_anchor_nodes]
+        #                 )/(bed_thick_i.shape[0] - 1)
+        #             bed_thick_i[i, :][self.fixed_value_nodes] = bed_thick_i[i, :][self.fixed_value_anchor_nodes] + (
+        #                 self.eta_init[self.fixed_value_nodes]
+        #                 - self.eta_init[self.fixed_value_anchor_nodes]
+        #                 )/(bed_thick_i.shape[0] - 1)
+        #     elif self.salt is False:
+        #         for i in range(bed_thick_i.shape[0]):
+        #             bed_thick_i[i, :][self.fixed_grad_nodes] = bed_thick_i[i, :][self.fixed_grad_anchor_nodes] + (
+        #                 self.eta_init[self.fixed_grad_nodes]
+        #                 - self.eta_init[self.fixed_grad_anchor_nodes]
+        #                 )/bed_thick_i.shape[0]
+        #             bed_thick_i[i, :][self.fixed_value_nodes] = bed_thick_i[i, :][self.fixed_value_anchor_nodes] + (
+        #                 self.eta_init[self.fixed_value_nodes]
+        #                 - self.eta_init[self.fixed_value_anchor_nodes]
+        #                 )/(bed_thick_i.shape[0])
+
 
 
 def run(
