@@ -95,6 +95,7 @@ class TurbidityCurrent2D(Component):
         "bed__active_layer_fraction_i": "1",
         "deriviation_of_bed__active_layer_fraction_i": "1",
         "bed__sediment_volume_per_unit_area_i": "m",
+        "der__flow__sediment_concentration_i": "1"
     }
 
     _var_mapping = {
@@ -254,7 +255,7 @@ class TurbidityCurrent2D(Component):
             self.model = model
             self.karman = 0.4
             self.no_erosion = no_erosion
-            self.der_active_layer = 0
+            # self.der_active_layer = 0
             self.salt = salt
             self.alpha_4eq = alpha_4eq
         else:
@@ -289,7 +290,7 @@ class TurbidityCurrent2D(Component):
             self.model = config['flow']['model']
             self.karman = config['flow']['karman']
             self.no_erosion = config['flow']['no_erosion']
-            self.der_active_layer = 0
+            # self.der_active_layer = 0
             self.salt = config['flow']['salt']
             self.alpha_4eq = config['flow']['alpha_4eq']
 
@@ -372,24 +373,24 @@ class TurbidityCurrent2D(Component):
                         "bed__active_layer_fraction_" + str(i)
                     ]
         
-        # try:
-        #     self.der_active_layer = np.empty(
-        #             [self.number_gclass, grid.number_of_nodes], dtype=float
-        #     )
-        #     for i in range(self.number_gclass):
-        #         self.der_active_layer[i, :] = (
-        #             grid.add_zeros(
-        #                 "der_bed__active_layer_fraction_" + str(i),
-        #                 at="node",
-        #                 units=self._var_units["deriviation_of_bed__active_layer_fraction_i"],
-        #             )
-        #             / self.number_gclass
-        #         )
-        # except FieldError:
-        #     for i in range(self.number_gclass):
-        #         self.der_active_layer[i, :] = grid.at_node[
-        #             "der_bed__active_layer_fraction_" + str(i)
-        #         ]
+        try:
+            self.der_bed_active_layer = np.empty(
+                    [self.number_gclass, grid.number_of_nodes], dtype=float
+            )
+            for i in range(self.number_gclass):
+                self.der_bed_active_layer[i, :] = (
+                    grid.add_zeros(
+                        "der_bed__active_layer_fraction_" + str(i),
+                        at="node",
+                        units=self._var_units["deriviation_of_bed__active_layer_fraction_i"],
+                    )
+                    / self.number_gclass
+                )
+        except FieldError:
+            for i in range(self.number_gclass):
+                self.der_bed_active_layer[i, :] = grid.at_node[
+                    "der_bed__active_layer_fraction_" + str(i)
+                ]
 
         try:
             self.h = grid.add_zeros(
@@ -423,6 +424,21 @@ class TurbidityCurrent2D(Component):
                 self.Ch_i[i, :] = self.C_i[i, :] * self.h
             self.C = np.sum(self.C_i, axis=0)
             self.Ch = np.sum(self.Ch_i, axis=0)
+
+        try:
+            self.der_Ch_i = np.empty([self.number_gclass, grid.number_of_nodes])
+            for i in range(self.number_gclass):
+                self.der_Ch_i[i, :] = grid.add_zeros(
+                    "der__flow__sediment_concentration_" + str(i),
+                    at="node",
+                    units=self._var_units["der__flow__sediment_concentration_i"],
+                )
+        except FieldError:
+            # Field was already set
+            for i in range(self.number_gclass):
+                self.der_Ch_i[i,
+                         :] = grid.at_node["der__flow__sediment_concentration_" + str(i)]
+                self.Ch_i[i, :] = self.C_i[i, :] * self.h
 
         try:
             grid.add_zeros(
@@ -722,6 +738,10 @@ class TurbidityCurrent2D(Component):
         if self.salt is True:
             self.ws[-1] = 0.
 
+        # set deriviation for calc_deposition
+        self.prev_der_active_layer = self.der_bed_active_layer.copy()
+        self.prev_der_Ch_i = self.der_Ch_i.copy()
+        self.prev_out_Ch_i = self.Ch_i.copy()
         # Start time of simulation is at 0 s
         grid.at_grid["time__elapsed"] = 0.0
         self.elapsed_time = grid.at_grid["time__elapsed"]
@@ -868,8 +888,7 @@ class TurbidityCurrent2D(Component):
             Ch_link_i=self.Ch_link_i,
             u_node=self.u_node,
             v_node=self.v_node,
-            eta=self.eta,
-            bed_thick_i=self.bed_thick_i
+            eta=self.eta
         )
         update_up_down_links_and_nodes(self)
         self.copy_values_to_temp()
@@ -1322,7 +1341,6 @@ class TurbidityCurrent2D(Component):
             h_link=self.h_link_temp,
             Ch_link=self.Ch_link_temp,
             eta=self.eta_temp,
-            bed_thick_i=self.bed_thick_i_temp
         )
 
     def _momentum_diffusion(self):
@@ -2080,12 +2098,20 @@ class TurbidityCurrent2D(Component):
         # Settling is solved explicitly, and entrainment is
         # solved semi-implicitly
         
-        out_Ch_i[:, nodes] = (
-            Ch_i[:, nodes]
-            + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt
-        )
-        out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
+        # out_Ch_i[:, nodes] = (
+        #     Ch_i[:, nodes]
+        #     + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt
+        # )
+        # out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
 
+        # 2-order adams-bashforth method
+        # pdb.set_trace()
+        self.prev_der_Ch_i[:, ~nodes] = 0.
+        self.prev_der_Ch_i[:, nodes] = self.der_Ch_i[:, nodes].copy()
+        self.der_Ch_i[:, ~nodes] = 0.
+        self.der_Ch_i[:, nodes] = ws*(self.bed_active_layer[:, nodes]*self.es[:, nodes] - r0*Ch_i[:, nodes]/h[nodes])
+        out_Ch_i[:, nodes] = Ch_i[:, nodes] + (3/2 * self.der_Ch_i[:, nodes] - 1/2 * self.prev_der_Ch_i[:, nodes])*dt
+         
         # Obtain sedimentation rate
         self.bed_change_i[:, nodes] = self.Ch_i_prev[:,
                                                     nodes] - out_Ch_i[:, nodes]
@@ -2098,14 +2124,13 @@ class TurbidityCurrent2D(Component):
         # 侵食された粒径階だけ流れに戻す
         # 侵食された粒径階のbed changeを0にする
         if self.no_erosion is True:
-            for i in range(self.bed_change_i.shape[0]):
-                eroded_region = self.bed_change_i[i, nodes] < 0.0
-                out_Ch_i[i, nodes[eroded_region]
-                        ] = self.Ch_i_prev[i, nodes[eroded_region]]
-                self.bed_change_i[i, nodes[eroded_region]] = 0.0
+            eroded_region = np.sum(self.bed_change_i[:, nodes], axis=0) < 0.0
+            out_Ch_i[:, nodes[eroded_region]
+                        ] = self.Ch_i_prev[:, nodes[eroded_region]]
+            self.bed_change_i[:, nodes[eroded_region]] = 0.0
 
         # Apply diffusion to avoid slope steeper than angle of repose
-        # self._bed_diffusion_at_high_slope()
+        self._bed_diffusion_at_high_slope()
 
         # Time development of active layer
         # self.bed_active_layer[:, nodes] += (
@@ -2121,19 +2146,24 @@ class TurbidityCurrent2D(Component):
         # active layer fraction
         # two-step adams-bashforth method
         # pdb.set_trace()
-        # prev_active_layer = self.bed_active_layer[:, nodes]
-        # prev_der_active_layer = self.der_active_layer
-        # der_active_layer = self.bed_change_i[:,nodes]/self.la - prev_active_layer/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
-        # self.bed_active_layer[:, nodes] = self.bed_active_layer[:, nodes] + (3/2 * der_active_layer - 1/2 * prev_der_active_layer)*dt
+        self.prev_der_active_layer[:, ~nodes] = 0.
+        self.prev_der_active_layer[:, nodes] = self.der_bed_active_layer[:, nodes].copy()
+        self.der_bed_active_layer[:, ~nodes] = 0.
+        # self.der_bed_active_layer[:, nodes] = ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
+        #     - self.bed_active_layer[:, nodes]/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
+        self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
+            - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
+        # self.bed_change_i[:,nodes]/self.la - self.prev_active_layer/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
+        self.bed_active_layer[:, nodes] = self.bed_active_layer[:, nodes] + (3/2 * self.der_bed_active_layer[:, nodes] - 1/2 * self.prev_der_active_layer[:, nodes])*dt
 
         # self.der_active_layer = der_active_layer
 
 
-        self.bed_active_layer[:, nodes] += 1 / \
-            self.la * self.bed_change_i[:, nodes]
-        self.bed_active_layer[:, nodes] /= 1 + 1 / self.la * np.sum(
-            self.bed_change_i[:, nodes], axis=0
-        )  # semi-implicit
+        # self.bed_active_layer[:, nodes] += 1 / \
+        #     self.la * self.bed_change_i[:, nodes]
+        # self.bed_active_layer[:, nodes] /= 1 + 1 / self.la * np.sum(
+        #     self.bed_change_i[:, nodes], axis=0
+        # )  # semi-implicit
 
         # Adjust abnormal values in the active layer
         # (self.bed_active_layer[:, nodes])[
@@ -2317,7 +2347,6 @@ class TurbidityCurrent2D(Component):
             u_node=self.u_node,
             v_node=self.v_node,
             eta=self.eta,
-            bed_thick_i=self.bed_thick_i,
             Kh=self.Kh,
         )
 
@@ -2425,7 +2454,6 @@ class TurbidityCurrent2D(Component):
         u_node=None,
         v_node=None,
         eta=None,
-        bed_thick_i=None,
         p=None,
         Kh=None,
     ):
