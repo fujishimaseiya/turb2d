@@ -740,8 +740,11 @@ class TurbidityCurrent2D(Component):
 
         # set deriviation for calc_deposition
         self.prev_der_active_layer = self.der_bed_active_layer.copy()
+        self.prev_prev_der_active_layer = self.der_bed_active_layer.copy()
+        self.prev_prev_der_Ch_i = self.der_Ch_i.copy()
         self.prev_der_Ch_i = self.der_Ch_i.copy()
         self.prev_out_Ch_i = self.Ch_i.copy()
+
         # Start time of simulation is at 0 s
         grid.at_grid["time__elapsed"] = 0.0
         self.elapsed_time = grid.at_grid["time__elapsed"]
@@ -781,7 +784,7 @@ class TurbidityCurrent2D(Component):
 
         return dt_local
 
-    def run_one_step(self, dt=None):
+    def run_one_step(self, dt=None, repeat=None, last=None):
         """Generate a turbidity current across a grid.
 
         For one time step, this generates 'turbidity current' across
@@ -801,10 +804,13 @@ class TurbidityCurrent2D(Component):
 
         # DH adds a loop to enable an imposed tstep while maintaining stability
         local_elapsed_time = 0.0
+        self.local_elapsed_time = local_elapsed_time
         if dt is None:
             dt = np.inf  # to allow the loop to begin
         self.dt = dt
 
+        self.repeat = repeat
+        self.last = last
         # First, we check and see if the neighbor arrays have been
         # initialized
         if self.neighbor_flag is False:
@@ -894,14 +900,14 @@ class TurbidityCurrent2D(Component):
         self.copy_values_to_temp()
 
         # continue calculation until the prescribed time elapsed
-        while local_elapsed_time < dt:
+        while self.local_elapsed_time < dt:
             # set local time step
             dt_local = self.calc_time_step()
             # Can really get into trouble if nothing happens but we still run:
             if not dt_local < np.inf:
                 break
-            if local_elapsed_time + dt_local > dt:
-                dt_local = dt - local_elapsed_time
+            if self.local_elapsed_time + dt_local > dt:
+                dt_local = dt - self.local_elapsed_time
             self.dt_local = dt_local
 
             # Find wet and partial wet grids
@@ -949,11 +955,11 @@ class TurbidityCurrent2D(Component):
                 break
 
             # add local dt to the timer "local elapsed time"
-            local_elapsed_time += self.dt_local
+            self.local_elapsed_time += self.dt_local
 
         # This is the end of the calculation
         # Update bed thickness and record results in the grid
-        self.elapsed_time += local_elapsed_time
+        self.elapsed_time += self.local_elapsed_time
         self.bed_thick = self.eta - self.eta_init
         import warnings
         warnings.simplefilter('error')
@@ -2104,13 +2110,21 @@ class TurbidityCurrent2D(Component):
         # )
         # out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
 
-        # 2-order adams-bashforth method
+        # # 3-order adams-bashforth method
         # pdb.set_trace()
-        self.prev_der_Ch_i[:, ~nodes] = 0.
-        self.prev_der_Ch_i[:, nodes] = self.der_Ch_i[:, nodes].copy()
-        self.der_Ch_i[:, ~nodes] = 0.
-        self.der_Ch_i[:, nodes] = ws*(self.bed_active_layer[:, nodes]*self.es[:, nodes] - r0*Ch_i[:, nodes]/h[nodes])
-        out_Ch_i[:, nodes] = Ch_i[:, nodes] + (3/2 * self.der_Ch_i[:, nodes] - 1/2 * self.prev_der_Ch_i[:, nodes])*dt
+        if self.local_elapsed_time == 0.0 and self.repeat == 0 and self.last == 1:
+            self.der_Ch_i[:, nodes] = ws*(self.bed_active_layer[:, nodes]*self.es[:, nodes] - r0*Ch_i[:, nodes]/h[nodes])
+            out_Ch_i[:, nodes] = (Ch_i[:, nodes] + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt)
+            out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
+            
+        else:
+            self.prev_prev_der_Ch_i[:, ~nodes] = 0.
+            self.prev_prev_der_Ch_i[:, nodes] = self.prev_der_Ch_i[:, nodes].copy()
+            self.prev_der_Ch_i[:, ~nodes] = 0.
+            self.prev_der_Ch_i[:, nodes] = self.der_Ch_i[:, nodes].copy()
+            self.der_Ch_i[:, ~nodes] = 0.
+            self.der_Ch_i[:, nodes] = ws*(self.bed_active_layer[:, nodes]*self.es[:, nodes] - r0*Ch_i[:, nodes]/h[nodes])
+            out_Ch_i[:, nodes] = Ch_i[:, nodes] + 1/12*(23*self.der_Ch_i[:, nodes] - 16*self.prev_der_Ch_i[:, nodes] + 5*self.prev_prev_der_Ch_i[:, nodes])*dt
          
         # Obtain sedimentation rate
         self.bed_change_i[:, nodes] = self.Ch_i_prev[:,
@@ -2144,17 +2158,31 @@ class TurbidityCurrent2D(Component):
         # )
 
         # active layer fraction
-        # two-step adams-bashforth method
+        # 3-step adams-bashforth method
         # pdb.set_trace()
-        self.prev_der_active_layer[:, ~nodes] = 0.
-        self.prev_der_active_layer[:, nodes] = self.der_bed_active_layer[:, nodes].copy()
-        self.der_bed_active_layer[:, ~nodes] = 0.
-        # self.der_bed_active_layer[:, nodes] = ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
-        #     - self.bed_active_layer[:, nodes]/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
-        self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
-            - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
-        # self.bed_change_i[:,nodes]/self.la - self.prev_active_layer/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
-        self.bed_active_layer[:, nodes] = self.bed_active_layer[:, nodes] + (3/2 * self.der_bed_active_layer[:, nodes] - 1/2 * self.prev_der_active_layer[:, nodes])*dt
+        # if first step, active layer is calculated using semi-implicit euler method
+        if self.local_elapsed_time == 0.0 and self.repeat == 0 and self.last == 1:
+            self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
+                - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
+            self.bed_active_layer[:, nodes] += 1 / \
+            self.la * self.bed_change_i[:, nodes]
+            self.bed_active_layer[:, nodes] /= 1 + 1 / self.la * np.sum(
+                self.bed_change_i[:, nodes], axis=0
+            )
+            
+        else:
+            self.prev_prev_der_active_layer[:, ~nodes] = 0.
+            self.prev_prev_der_active_layer[:, nodes] = self.prev_der_active_layer[:, nodes].copy()
+            self.prev_der_active_layer[:, ~nodes] = 0.
+            self.prev_der_active_layer[:, nodes] = self.der_bed_active_layer[:, nodes].copy()
+            self.der_bed_active_layer[:, ~nodes] = 0.
+            # self.der_bed_active_layer[:, nodes] = ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
+            #     - self.bed_active_layer[:, nodes]/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
+            self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
+                - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
+            # self.bed_change_i[:,nodes]/self.la - self.prev_active_layer/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
+            self.bed_active_layer[:, nodes] = self.bed_active_layer[:, nodes] + \
+                1/12*(23*self.der_bed_active_layer[:, nodes] - 16*self.prev_der_active_layer[:, nodes]+ 5 *self.prev_prev_der_active_layer[:, nodes])*dt
 
         # self.der_active_layer = der_active_layer
 
