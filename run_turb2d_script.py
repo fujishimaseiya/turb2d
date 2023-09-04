@@ -121,7 +121,7 @@ tc = TurbidityCurrent2D(grid,
                         config_path="config.yml")
 
 path = os.getcwd()
-dirname = '../debug/test_fukuda/test_4eq_0.1_500s_vnode_diff-05'
+dirname = '../test_gp1991exp_erosion'
 dirpath = os.path.join(path, dirname)
 if not os.path.exists(dirpath):
     os.mkdir(dirpath)
@@ -131,11 +131,11 @@ shutil.copy('config.yml', dirpath)
 t = time.time()
 tc.save_nc('{}/tc{:04d}.nc'.format(dirpath, 0))
 Ch_init = np.sum(tc.C * tc.h)
-last = 500
+last = 100
 num = 1
-for j in range(1):
+for j in range(2):
     for i in tqdm(range(1, last + 1), disable=False):
-        tc.run_one_step(dt=1.0)
+        tc.run_one_step(dt=1.0, repeat=j, last=i)
         tc.save_nc('{}/tc{:04d}.nc'.format(dirpath, num))
         if np.sum(tc.C * tc.h) / Ch_init < 0.01:
             break

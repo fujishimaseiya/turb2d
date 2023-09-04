@@ -2097,6 +2097,9 @@ class TurbidityCurrent2D(Component):
             self.Ds,
             self.nu,
             u_star,
+            v_node[nodes], 
+            h[nodes], 
+            r0,
             function=self.sed_entrainment_func,
         )
         
@@ -2220,7 +2223,7 @@ class TurbidityCurrent2D(Component):
         """diffusion sediment transport in the region where slope is close to angle
              of repose
         """
-        diffusion_coeff_slope = 1.0e-5
+        diffusion_coeff_slope = 1.0e-3
         high_slope = 0.2
 
         high_slope_horizontal_links = (

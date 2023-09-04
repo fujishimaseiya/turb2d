@@ -61,7 +61,7 @@ def get_ws(R, g, Ds, nu):
     return ws
 
 
-def get_es(R, g, Ds, nu, u_star, function="GP1991field", out=None):
+def get_es(R, g, Ds, nu, u_star, U, h, r0, function="GP1991field", out=None):
     """ Calculate entrainment rate of basal sediment to suspension using
         empirical functions proposed by Garcia and Parker (1991),
         van Rijn (1984), or Dorrell (2018)
@@ -109,6 +109,10 @@ def get_es(R, g, Ds, nu, u_star, function="GP1991field", out=None):
         _gp1991(R, g, Ds, nu, u_star, p=1.0, out=out)
     if function=='wright_and_parker(2004)':
         _wright_and_parker(R, g, Ds, nu, u_star, sigma=0.52, w_k=4.0 * 10**-5, slope_inside=2.4*10**-5, out=None)
+    if function=='Fukuda_etal_2023':
+        _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=out)
+    if function=='Leeuw_2020':
+        _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
 
 
     return out
@@ -131,7 +135,6 @@ def _gp1991(R, g, Ds, nu, u_star, p=1.0, out=None):
             dimensionless entrainment rate of basal sediment into
             suspension
     """
-
     if out is None:
         out = np.zeros([len(Ds), u_star.shape])
 
@@ -173,5 +176,40 @@ def _wright_and_parker(R, g, Ds, nu, u_star, sigma, w_k, slope_inside, out=None\
 
     Z = alpha_1 * kshi * (u_star/w_k) * Rp**alpha_2 * slope_inside*0.08 * (Ds/Ds50)**0.2
     out[:] = me * a * Z**5 / (1 + (a / 0.3) * Z**5)
+
+    return out
+
+def _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=None):
+    """Calculate sediment entrainment rate based on fukuda et al. (2023).
+    First, depth-averaged concentration is calculated. 
+    Sediment entrainment rate (basal sediment concentration) is calculated using cb = r0*C.
+    """
+
+    if out is None:
+        out = np.zeros([len(Ds), u_star.shape])
+
+    ws = get_ws(R, g, Ds, nu)
+
+    P_f = u_star**2*(np.abs(U))
+    N_f = g*R*h*ws
+    flow_power = P_f/N_f
+    phi = (5.6*10**(-3))*flow_power**(0.36)
+
+    out[:, :] = r0*phi
+
+    return out
+
+def _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=None):
+    """This is a method for calculation of sediment entrainment rate based on Leeuw (2020).
+   Two parameter model using u_star (not using u_star_skin) is employed."""
+    Fr = np.abs(U)/(g*h)**0.5
+    ws = get_ws(R, g, Ds, nu)
+    A = 4.74*10**-4
+    P1 = u_star/ws
+    P2 = Fr
+    e1 = 1.71
+    e2 = 1.18
+
+    out[:, :] = A*P1**e1*P2**e2
 
     return out
