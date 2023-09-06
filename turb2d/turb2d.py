@@ -258,6 +258,7 @@ class TurbidityCurrent2D(Component):
             # self.der_active_layer = 0
             self.salt = salt
             self.alpha_4eq = alpha_4eq
+            self.dx = grid.dx
         else:
             with open(config_path) as yml:
                 config = yaml.safe_load(yml)
@@ -293,6 +294,7 @@ class TurbidityCurrent2D(Component):
             # self.der_active_layer = 0
             self.salt = config['flow']['salt']
             self.alpha_4eq = config['flow']['alpha_4eq']
+            self.dx = config['grid']['spacing']
 
         # Now setting up fields at nodes and links
         try:
@@ -564,6 +566,40 @@ class TurbidityCurrent2D(Component):
         
         # except FieldError:
         #     self.Fr = grid.at_link["Froude_number"]
+
+        try:
+            self.flow_power = np.empty(
+                [self.number_gclass, grid.number_of_nodes], dtype=float
+            )
+            for i in range(self.number_gclass):
+                self.flow_power[i, :] = grid.add_zeros(
+                    "flow_power_" + str(i),
+                    at="node",
+                    units=self._var_units["bed__sediment_volume_per_unit_area_i"],
+                )
+            
+        except FieldError:
+            for i in range(self.number_gclass):
+                self.flow_power[i, :] = grid.at_node[
+                    "flow_power_" + str(i)
+                ]
+
+        try:
+            self.Phi = np.empty(
+                [self.number_gclass, grid.number_of_nodes], dtype=float
+            )
+            for i in range(self.number_gclass):
+                self.Phi[i, :] = grid.add_zeros(
+                    "Phi_" + str(i),
+                    at="node",
+                    units=self._var_units["bed__sediment_volume_per_unit_area_i"],
+                )
+            
+        except FieldError:
+            for i in range(self.number_gclass):
+                self.Phi[i, :] = grid.at_node[
+                    "Phi_" + str(i)
+                ]
 
         # record active links
         self.active_link_ids = links.active_link_ids(
@@ -2091,7 +2127,7 @@ class TurbidityCurrent2D(Component):
 
         # Calculate entrainment rate
         # pdb.set_trace()
-        self.es[:, nodes] = get_es(
+        self.es[:, nodes], self.flow_power[:, nodes], self.Phi[:, nodes] = get_es(
             self.R,
             self.g,
             self.Ds,
@@ -2467,6 +2503,20 @@ class TurbidityCurrent2D(Component):
         variable_names.extend(
             [
                 "bed__active_layer_fraction_{}".format(i)
+                for i in range(self.number_gclass)
+            ]
+        )
+
+        variable_names.extend(
+            [
+                "flow_power_{}".format(i)
+                for i in range(self.number_gclass)
+            ]
+        )
+
+        variable_names.extend(
+            [
+                "Phi_{}".format(i)
                 for i in range(self.number_gclass)
             ]
         )
