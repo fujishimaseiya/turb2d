@@ -105,13 +105,13 @@ def get_es(R, g, Ds, nu, u_star, U, h, r0, function="GP1991field", out=None):
 
     if function == "GP1991field":
         _gp1991(R, g, Ds, nu, u_star, p=0.1, out=out)
-    if function == "GP1991exp":
+    elif function == "GP1991exp":
         _gp1991(R, g, Ds, nu, u_star, p=1.0, out=out)
-    if function=='wright_and_parker(2004)':
+    elif function=='wright_and_parker(2004)':
         _wright_and_parker(R, g, Ds, nu, u_star, sigma=0.52, w_k=4.0 * 10**-5, slope_inside=2.4*10**-5, out=None)
-    if function=='Fukuda_etal_2023':
+    elif function=='Fukuda_etal_2023':
         out, flow_power, Phi = _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=out)
-    if function=='Leeuw_2020':
+    elif function=='Leeuw_2020':
         out, flow_power, Phi =_leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
     else:
         print("Please enter the correct entrainment function")

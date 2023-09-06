@@ -25,7 +25,7 @@ grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 
-C_ini = [0.00184759, 0.001387506, 0.001873082, 0.002095487, 0.000360858]
+C_ini = [0.0001, 0.0001, 0.0001, 0.0001, 0.0001]
 h_ini = 0.20
 U_ini = 0.434019547
 # set inlet
@@ -120,8 +120,8 @@ grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
 tc = TurbidityCurrent2D(grid,
                         config_path="config.yml")
 
-path = os.getcwd()
-dirname = '../test_gp1991exp_erosion'
+path = '../test_diffusion'
+dirname = 'leeuw_2020'
 dirpath = os.path.join(path, dirname)
 if not os.path.exists(dirpath):
     os.mkdir(dirpath)
@@ -133,6 +133,7 @@ tc.save_nc('{}/tc{:04d}.nc'.format(dirpath, 0))
 Ch_init = np.sum(tc.C * tc.h)
 last = 100
 num = 1
+# pdb.set_trace()
 for j in range(2):
     for i in tqdm(range(1, last + 1), disable=False):
         tc.run_one_step(dt=1.0, repeat=j, last=i)

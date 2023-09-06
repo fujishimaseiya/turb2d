@@ -258,6 +258,7 @@ class TurbidityCurrent2D(Component):
             # self.der_active_layer = 0
             self.salt = salt
             self.alpha_4eq = alpha_4eq
+            self.dx = grid.dx
         else:
             with open(config_path) as yml:
                 config = yaml.safe_load(yml)
