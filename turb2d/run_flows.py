@@ -15,6 +15,7 @@ import multiprocessing as mp
 import netCDF4
 from landlab.io.native_landlab import save_grid
 from landlab import FieldError
+import pandas as pd
 import pdb
 
 class RunMultiFlows():
@@ -75,13 +76,13 @@ class RunMultiFlows():
                     conc = np.random.uniform(Cmin, Cmax, 4)
                     salt = np.array([np.random.uniform(saltmin, saltmax)])
                     C_ini.append(np.append(conc, salt))
-            np.savetxt(os.path.join(dirpath, 'C_ini.csv'), C_ini, delimiter=',')
+            # np.savetxt(os.path.join(dirpath, 'C_ini.csv'), C_ini, delimiter=',')
 
             if hmin == hmax:
                 h_ini = np.full(num_runs, hmin)
             else:
                 h_ini = np.random.uniform(hmin, hmax, num_runs)
-            np.savetxt(os.path.join(dirpath, 'h_ini.csv'), h_ini, delimiter=',')
+            # np.savetxt(os.path.join(dirpath, 'h_ini.csv'), h_ini, delimiter=',')
             
             if rmin is None:
                 r_ini = np.empty((num_runs, ))
@@ -90,37 +91,53 @@ class RunMultiFlows():
                 r_ini = np.full(num_runs, rmin)
             else:
                 r_ini = np.random.uniform(rmin, rmax, num_runs)
-            np.savetxt(os.path.join(dirpath, 'r_ini.csv'), r_ini, delimiter=',')
+            # np.savetxt(os.path.join(dirpath, 'r_ini.csv'), r_ini, delimiter=',')
 
             if Umax == Umin:
                 U_ini = np.full(num_runs, Umin)
             else:
                 U_ini =np.random.uniform(Umin, Umax, num_runs)
-            np.savetxt(os.path.join(dirpath, 'U_ini.csv'), U_ini, delimiter=',')
+            # np.savetxt(os.path.join(dirpath, 'U_ini.csv'), U_ini, delimiter=',')
             
             if endmin == endmax:
                 endtime = np.full(num_runs, endmin)
             else:
                 endtime = np.random.randint(endmin, endmax, num_runs)
-            np.savetxt(os.path.join(dirpath, 'endtime.csv'), endtime, delimiter=',')
+            # np.savetxt(os.path.join(dirpath, 'endtime.csv'), endtime, delimiter=',')
 
             if Cfmin == Cfmax:
                 Cf = np.full(num_runs, Cfmin)
             else:
                 Cf = np.random.uniform(Cfmin, Cfmax, num_runs)
-            np.savetxt(os.path.join(dirpath, 'Cf.csv'), Cf, delimiter=',')
+            # np.savetxt(os.path.join(dirpath, 'Cf.csv'), Cf, delimiter=',')
 
             if alpha_4eqmin == alpha_4eqmax:
                 alpha_4eq = np.full(num_runs, alpha_4eqmin)
             else:
                 alpha_4eq = np.random.uniform(alpha_4eqmin, alpha_4eqmax, num_runs)
-            np.savetxt(os.path.join(dirpath,"alpha_4eq.csv"), alpha_4eq, delimiter=',')
+            # np.savetxt(os.path.join(dirpath,"alpha_4eq.csv"), alpha_4eq, delimiter=',')
 
             if r0min == r0max:
                 r0 = np.full(num_runs, r0min)
             else:
                 r0 = np.random.uniform(r0min, r0max, num_runs)
-            np.savetxt(os.path.join(dirpath, "r0.csv"), r0, delimiter=',')
+            # np.savetxt(os.path.join(dirpath, "r0.csv"), r0, delimiter=',')
+
+            df = pd.DataFrame({'h_ini': h_ini,
+                               'r_ini': r_ini,
+                               'u_ini': U_ini,
+                               'Cf': Cf,
+                               'r0': r0,
+                               'alpha_4eq': alpha_4eq,
+                               'duration': endtime
+                               })
+            column_name = []
+            for i in range(config['run_param']['grain_class_num']):
+                name = 'C{}'.format(i)
+                column_name.append(name)
+            df_conc = pd.DataFrame(C_ini, columns=column_name)
+            df_ini_param = pd.concat([df_conc, df], axis=1)
+            df_ini_param.to_csv(os.path.join(dirpath, 'ini_param.csv'), mode='x', na_rep='NaN')
 
             self.C_ini = C_ini
             self.U_ini = U_ini
@@ -343,7 +360,7 @@ class RunMultiFlows():
 
             if self.timelimit is None:
                 while (((np.sum(tc.Ch) / Ch_init) > 0.01) and (t < init_values[4])):
-                    tc.run_one_step(dt=dt)
+                    tc.run_one_step(dt=dt, repeat=i, last=t+1)
                     t += dt
 
             elif type(self.timelimit) is int:
@@ -354,7 +371,7 @@ class RunMultiFlows():
                         while (((np.sum(tc.Ch) / Ch_init) > 0.01) and (t < init_values[4])):
                             # print(t)
                             try:
-                                tc.run_one_step(dt=dt)
+                                tc.run_one_step(dt=dt, repeat=i, last=t+1)
                                 t += dt
                             except RuntimeWarning as e:
                                 print("runtimewarning!")
@@ -520,7 +537,7 @@ class RunMultiFlows():
 
         # run flows using multiple processors
         l = mp.Lock()
-        pool = mp.Pool(self.processors, initializer=self.init, initaergs=(l,))
+        pool = mp.Pool(self.processors, initializer=self.init, initargs=(l,))
         pool.map(self.run_flow, init_value_list)
         pool.close()
         pool.join()

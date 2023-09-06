@@ -1,8 +1,6 @@
 run_param:
-  dirpath: # None
-  filename: "run_3000.nc"
-  num_runs: 10
-  processors: 2
+  num_runs: 5
+  processors: 5
   grain_class_num: 5
   Cmin: 0.0001
   Cmax: 0.005
@@ -13,7 +11,7 @@ run_param:
   rmin: # None
   rmax: # None
   endmin: 30
-  endmax: 180
+  endmax: 60
   saltmin: 0.0001
   saltmax: 0.005
   Cfmin: 0.001
@@ -42,10 +40,10 @@ grid:
 
 flow:
   h_init: 0.0
-  Ch_w: 10.0e-5
+  Ch_w: 1.0e-6
   h_w: 0.001
-  alpha: 0.4
-  Cf: 4.69E-03
+  alpha: 0.1
+  Cf: 0.007362615
   g: 9.81
   R: 0.49
   Ds: 
@@ -55,20 +53,25 @@ flow:
     - 7.43e-5 
     - 4.0e-6
   lambda_p: 0.4
-  r0: 1.7
+  r0: 1.138691116
   nu: 1.010e-6
   kappa: 0.05
   nu_a: 0.75
   implicit_num: 100
-  implicit_threshold: 1.0e-12
+  implicit_threshold: 1.0e-10
   C_init: 0.0
   gamma: 0.35
   la: 0.003
   water_entrainment: True
   suspension: True
-  sed_entrainment_func: GP1991exp
-  no_erosion: True
+  sed_entrainment_func: Leeuw_2020
+  no_erosion: False
   model: 4eq
   salt: True
-  alpha_4eq: 2.14e-01
+  alpha_4eq: 0.6
   karman: 0.4
+
+save:
+  dirpath: /Users/fujishimaseiya/Python
+  dirname: test_multi
+  filename: num_5.nc

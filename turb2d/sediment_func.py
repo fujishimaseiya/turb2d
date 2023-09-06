@@ -113,7 +113,9 @@ def get_es(R, g, Ds, nu, u_star, U, h, r0, function="GP1991field", out=None):
         _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=out)
     if function=='Leeuw_2020':
         _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
-
+    else:
+        print("Please enter the correct entrainment function")
+        raise ValueError
 
     return out
 

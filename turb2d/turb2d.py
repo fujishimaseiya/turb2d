@@ -971,12 +971,12 @@ class TurbidityCurrent2D(Component):
                     try:
                         sed_volume_grad_anchor[j] = self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes][j]/self.bed_thick[self.fixed_grad_anchor_nodes][j]
                     except RuntimeWarning:
-                        sed_volume_grad_anchor[j] = 0
-                for j in range(len(sed_volume_fixed_anchor)):
+                        sed_volume_grad_anchor[j] = 0.
+                for k in range(len(sed_volume_fixed_anchor)):
                     try:
-                        sed_volume_fixed_anchor[j] = self.bed_thick_i[i, :][self.fixed_value_anchor_nodes][j]/self.bed_thick[self.fixed_value_anchor_nodes][j]
+                        sed_volume_fixed_anchor[k] = self.bed_thick_i[i, :][self.fixed_value_anchor_nodes][k]/self.bed_thick[self.fixed_value_anchor_nodes][k]
                     except RuntimeWarning:
-                        sed_volume_fixed_anchor[j] = 0
+                        sed_volume_fixed_anchor[k] = 0.
                 self.bed_thick_i[i, :][self.fixed_grad_nodes] = self.bed_thick[self.fixed_grad_nodes]*sed_volume_grad_anchor
                 self.bed_thick_i[i, :][self.fixed_value_nodes] = self.bed_thick[self.fixed_value_nodes]*sed_volume_fixed_anchor
 
@@ -1578,7 +1578,6 @@ class TurbidityCurrent2D(Component):
             U=self.U_temp,
         )
         self.Kh_temp[self.wet_pwet_links[self.Kh_temp[self.wet_pwet_links] < 0]] = 0.0
-        # pdb.set_trace()?
         # self.Fr[self.wet_pwet_links] = self.U[self.wet_pwet_links]/(self.g*self.h_link[self.wet_pwet_links])**0.5
         # print(Fr)
         # development of turbulent kinetic energy
@@ -2079,6 +2078,7 @@ class TurbidityCurrent2D(Component):
         ws = self.ws
         r0 = self.r0
 
+
         # copy previous values of Ch
         self.Ch_i_prev[:, nodes] = Ch_i[:, nodes]
         # Calculate shear velocity
@@ -2090,14 +2090,14 @@ class TurbidityCurrent2D(Component):
 
 
         # Calculate entrainment rate
-        
+        # pdb.set_trace()
         self.es[:, nodes] = get_es(
             self.R,
             self.g,
             self.Ds,
             self.nu,
             u_star,
-            v_node[nodes], 
+            U_node[nodes], 
             h[nodes], 
             r0,
             function=self.sed_entrainment_func,
@@ -2223,8 +2223,9 @@ class TurbidityCurrent2D(Component):
         """diffusion sediment transport in the region where slope is close to angle
              of repose
         """
-        diffusion_coeff_slope = 1.0e-3
+        diffusion_coeff_slope = 1.0e-5
         high_slope = 0.2
+        dx = self.dx
 
         high_slope_horizontal_links = (
             np.abs(self.S[self.wet_pwet_horizontal_links]) > high_slope
@@ -2235,7 +2236,7 @@ class TurbidityCurrent2D(Component):
         west_node = self.west_node_at_horizontal_link[
             self.wet_pwet_horizontal_links[high_slope_horizontal_links]
         ]
-        horiz_change = diffusion_coeff_slope * (
+        horiz_change = self.dt_local/self.dx*diffusion_coeff_slope * (
             self.eta[east_node] * self.bed_active_layer[:, east_node]
             - self.eta[west_node] * self.bed_active_layer[:, west_node]
         )
@@ -2250,7 +2251,7 @@ class TurbidityCurrent2D(Component):
         south_node = self.south_node_at_vertical_link[
             self.wet_pwet_vertical_links[high_slope_vertical_links]
         ]
-        vert_change = diffusion_coeff_slope * (
+        vert_change = self.dt_local/self.dx*diffusion_coeff_slope * (
             self.eta[north_node] * self.bed_active_layer[:, north_node]
             - self.eta[south_node] * self.bed_active_layer[:, south_node]
         )
