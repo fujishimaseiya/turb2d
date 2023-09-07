@@ -43,17 +43,19 @@ if __name__ ==  '__main__':
 
     savedir_name = ["img_sed0", "img_sed1", "img_sed2", "img_sed3", "img_bedthick"]
     var_list = ["sed_volume_per_unit_area_0", "sed_volume_per_unit_area_1", "sed_volume_per_unit_area_2", "sed_volume_per_unit_area_3", "bed_thick"]
-    read_num = 5
-    fn = os.path.join(savedir, filename)
-    ds = nc.Dataset(fn)
+    savedir_list = []
     for i in savedir_name:
         imgdir = os.path.join(savedir, i)
         if not os.path.exists(imgdir):
             os.mkdir(imgdir)
-        for j in range(len(var_list)):
-            for k in range(read_num):
-                fig, ax = plt.subplots()
-                im = ax.imshow(ds[var_list[j]][k], cmap="viridis")
-                fig.colorbar(im, ax=ax)
-                plt.savefig(os.path.join(imgdir, "series_{}.jpg".format(k)))
-                plt.close()
+        savedir_list.append(imgdir)
+    read_num = 5
+    fn = os.path.join(savedir, filename)
+    ds = nc.Dataset(fn)
+    for j in range(len(var_list)):
+        for k in range(read_num):
+            fig, ax = plt.subplots()
+            im = ax.imshow(ds[var_list[j]][k], cmap="viridis")
+            fig.colorbar(im, ax=ax)
+            plt.savefig(os.path.join(savedir_list[j], "series_{}.jpg".format(k)))
+            plt.close()

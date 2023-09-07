@@ -110,15 +110,15 @@ def get_es(R, g, Ds, nu, u_star, U, h, r0, function="GP1991field", out=None):
     elif function=='wright_and_parker(2004)':
         _wright_and_parker(R, g, Ds, nu, u_star, sigma=0.52, w_k=4.0 * 10**-5, slope_inside=2.4*10**-5, out=None)
     elif function=='Fukuda_etal_2023':
-        out, flow_power, Phi = _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=out)
+        _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=out)
     elif function=='Leeuw_2020':
-        out, flow_power, Phi =_leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
+        _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
     else:
         print("Please enter the correct entrainment function")
         raise ValueError
 
 
-    return out, flow_power, Phi
+    return out
 
 
 def _gp1991(R, g, Ds, nu, u_star, p=1.0, out=None):
@@ -200,7 +200,7 @@ def _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=None):
 
     out[:, :] = r0*phi
 
-    return out, flow_power, phi
+    return out
 
 def _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=None):
     """This is a method for calculation of sediment entrainment rate based on Leeuw (2020).
@@ -220,4 +220,4 @@ def _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=None):
     flow_power = P_f/N_f
     phi = (5.6*10**(-3))*flow_power**(0.36)
 
-    return out, flow_power, phi 
+    return out
