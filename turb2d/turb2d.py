@@ -867,6 +867,14 @@ class TurbidityCurrent2D(Component):
                 self.bed_thick_i[i, :] = self.grid["node"][
                     "bed__sediment_volume_per_unit_area_" + str(i)
                 ]
+        for i in range(self.number_gclass):
+            self.Phi[i, :] = self.grid["node"][
+                "Phi_" + str(i)
+            ]
+        for i in range(self.number_gclass):
+            self.flow_power[i, :] = self.grid["node"][
+                "flow_power_" + str(i)
+            ]
         self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
         self.u = self.grid["link"]["flow__horizontal_velocity"]
         self.v = self.grid["link"]["flow__vertical_velocity"]
@@ -2365,6 +2373,12 @@ class TurbidityCurrent2D(Component):
         self.grid.at_link["flow_vertical_velocity__vertical_gradient"] = self.dvdy
         self.grid.at_node["flow_depth__horizontal_gradient"] = self.dhdx
         self.grid.at_node["flow_depth__vertical_gradient"] = self.dhdy
+        for i in range(self.number_gclass):
+            self.grid.at_node["Phi_" +
+                              str(i)] = self.Phi[i, :]
+        for i in range(self.number_gclass):
+            self.grid.at_node["flow_power_" +
+                                str(i)] = self.flow_power[i, :]   
         if self.model == "4eq":
             self.grid.at_link["flow__TKE"] = self.Kh
             self.grid.at_link["flow_TKE__horizontal_gradient"] = self.dKhdx
