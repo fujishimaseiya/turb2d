@@ -1,0 +1,14 @@
+
+build/
+
+dist/
+
+turb2d.egg-info/
+
+*.nc
+
+*.lprof
+
+turb2d/__pycache__/
+
+*.yml
