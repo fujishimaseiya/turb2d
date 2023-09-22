@@ -159,6 +159,7 @@ class TurbidityCurrent2D(Component):
         salt = False,
         model="3eq",
         alpha_4eq = 0.1,
+        p_gp1991 = 0.1,
         **kwds
     ):
         """Create a component of turbidity current
@@ -259,6 +260,10 @@ class TurbidityCurrent2D(Component):
             self.salt = salt
             self.alpha_4eq = alpha_4eq
             self.dx = grid.dx
+            if self.sed_entrainment_func == "GP1991field" or self.sed_entrainment_func == "GP1991exp":
+                self.p_gp1991 = p_gp1991
+            else:
+                self.p_gp1991 = None
         else:
             with open(config_path) as yml:
                 config = yaml.safe_load(yml)
@@ -295,6 +300,10 @@ class TurbidityCurrent2D(Component):
             self.salt = config['flow']['salt']
             self.alpha_4eq = config['flow']['alpha_4eq']
             self.dx = config['grid']['spacing']
+            if self.sed_entrainment_func == "GP1991field" or self.sed_entrainment_func == "GP1991exp":
+                self.p_gp1991 = config['flow']['p']
+            else:
+                self.p_gp1991 = None
 
         # Now setting up fields at nodes and links
         try:
@@ -2092,7 +2101,6 @@ class TurbidityCurrent2D(Component):
 
 
         # Calculate entrainment rate
-        # pdb.set_trace()
         self.es[:, nodes] = get_es(
             self.R,
             self.g,
@@ -2102,7 +2110,8 @@ class TurbidityCurrent2D(Component):
             U_node[nodes], 
             h[nodes], 
             r0,
-            function=self.sed_entrainment_func,
+            self.p_gp1991,
+            function=self.sed_entrainment_func
         )
         
         # Calculate the change of volume of suspended sediment
