@@ -395,6 +395,7 @@ class RunMultiFlows():
                     with open(os.path.join(self.dirpath,'timeout.txt'), mode='a') as f:
                         f.write('{}\n'.format(init_values[0]))
                     print('Run no.{} timed out:{}'.format(init_values[0],self.timelimit))
+                    return
         
             else:
                 raise ValueError('An invalid value was entered in timelimit.')
