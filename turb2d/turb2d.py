@@ -2185,20 +2185,62 @@ class TurbidityCurrent2D(Component):
             )
             
         else:
+            # initialize array for deriviation
             self.prev_prev_der_active_layer[:, ~nodes] = 0.
             self.prev_prev_der_active_layer[:, nodes] = self.prev_der_active_layer[:, nodes].copy()
             self.prev_der_active_layer[:, ~nodes] = 0.
             self.prev_der_active_layer[:, nodes] = self.der_bed_active_layer[:, nodes].copy()
             self.der_bed_active_layer[:, ~nodes] = 0.
-            # self.der_bed_active_layer[:, nodes] = ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
-            #     - self.bed_active_layer[:, nodes]/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
-            self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
-                - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
-            # self.bed_change_i[:,nodes]/self.la - self.prev_active_layer/self.la * np.sum(self.bed_change_i[:, nodes],axis=0)
+            if self.no_erosion is True:
+                # calculate deriviation of active layer
+                self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
+                    - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
+                
+            elif self.no_erosion is False:
+                # check eroded region
+                eroded_region = self.bed_change_i[:, nodes] < 0.0
+                # calculate derivaition of this time step
+                # if there is eroded region, interfacial exchange fraction (grain size fraction of substrate) is calculated.
+                if self.salt is True:
+                    exchange_frac = np.zeros(self.bed_active_layer.shape[0])
+                    # Grain size equivalent to salt makes the exchange rate 0
+                    exchange_frac[:(self.bed_active_layer.shape[0]-1)] = 1/(self.number_gclass - 1)
+                elif self.salt is False:
+                    exchange_frac = 1/self.number_gclass
+                    
+                # calculate deriviation of active layer
+                for i in range(self.bed_active_layer.shape[0]):
+                    # in eroded region, the sediment is supplied from the substrate to the active layer by the amount of eroded sediment
+                    self.der_bed_active_layer[:, nodes[eroded_region[i, :]]] = 1/self.la*(ws/(1-self.lambda_p)\
+                    *(r0*out_Ch_i[:, nodes[eroded_region[i, :]]]/h[nodes[eroded_region[i, :]]]-self.bed_active_layer[:, nodes[eroded_region[i, :]]]*self.es[:, nodes[eroded_region[i, :]]]) \
+                    - exchange_frac[i] * np.sum(self.bed_change_i[:, nodes[eroded_region[i, :]]],axis=0))
+
+                    # in no eroded region, interfacial exchange rate is the same as active layer fraction
+                    self.der_bed_active_layer[:, nodes[~eroded_region[i, :]]] = 1/self.la*(ws/(1-self.lambda_p)\
+                    *(r0*out_Ch_i[:, nodes[~eroded_region[i, :]]]/h[nodes[~eroded_region[i, :]]]-self.bed_active_layer[:, nodes[~eroded_region[i, :]]]*self.es[:, nodes[~eroded_region[i, :]]]) \
+                    - self.bed_active_layer[:, nodes[~eroded_region[i, :]]] * np.sum(self.bed_change_i[:, nodes[~eroded_region[i, :]]],axis=0))
+            # calculate bed active layer of next time step
             self.bed_active_layer[:, nodes] = self.bed_active_layer[:, nodes] + \
                 1/12*(23*self.der_bed_active_layer[:, nodes] - 16*self.prev_der_active_layer[:, nodes]+ 5 *self.prev_prev_der_active_layer[:, nodes])*dt
 
-        # self.der_active_layer = der_active_layer
+        # if no_erosion is false, the sediment is supplied from the substrate to the active layer by the amount of eroded sediment
+        # if self.no_erosion is False:
+        #     act_layer_thickness_i = self.la * self.bed_active_layer
+        #     if self.salt is True:
+        #         ratio = 1/(self.number_gclass - 1)
+        #     elif self.salt is False:
+        #         ratio = 1/self.number_gclass
+        #     else:
+        #         raise TypeError('Enter True or False in salt.')
+        #     for i in range(self.bed_change_i.shape[0]):
+        #         eroded_region = np.sum(self.bed_change_i[i, nodes], axis=0) < 0.0
+        #         act_layer_thickness_i[i, eroded_region] += np.abs(self.bed_change_i[i, eroded_region])*ratio
+        #     self.bed_active_layer[:, eroded_region] = act_layer_thickness_i[:, eroded_region]/np.sum(act_layer_thickness_i[:, eroded_region], axis=0)
+                
+        #     out_Ch_i[:, nodes[eroded_region]
+        #                 ] = self.Ch_i_prev[:, nodes[eroded_region]]
+        #     self.bed_change_i[:, nodes[eroded_region]] = 0.0
+
 
 
         # self.bed_active_layer[:, nodes] += 1 / \
