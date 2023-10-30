@@ -25,9 +25,11 @@ grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 
-C_ini = [0.000306657103167, 0.00233366125663, 0.00342111822643, 0.00476536783631, 0.00428841447905]
-h_ini = 0.134188283012
-U_ini = 0.121365941426
+
+C_ini = [0.001, 0.001, 0.001, 0.001, 0.001]
+h_ini = 0.20
+U_ini = 0.40
+
 # set inlet
 inlet = np.where((grid.x_of_node > 0.63)
                         & (grid.x_of_node < 1.27) & (grid.y_of_node > 4.20))
@@ -120,8 +122,9 @@ grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
 tc = TurbidityCurrent2D(grid,
                         config_path="config.yml")
 
-path = '../'
-dirname = 'test_multi_gp1991exp/calc_series1'
+
+path = '..'
+dirname = 'test'
 dirpath = os.path.join(path, dirname)
 if not os.path.exists(dirpath):
     os.mkdir(dirpath)

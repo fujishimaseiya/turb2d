@@ -113,25 +113,24 @@ def get_es(R, g, Ds, nu, u_star, U, h, r0, p_gp1991, function="GP1991field", out
 
     if function == "GP1991field":
         # p=1.0 in original paper
-        _gp1991(R, g, Ds, nu, u_star, p=p_gp1991, out=out)
+        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, p=p_gp1991, out=out)
     elif function == "GP1991exp":
         # p=0.1 in original paper
-        _gp1991(R, g, Ds, nu, u_star, p=p_gp1991, out=out)
+        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, p=p_gp1991, out=out)
     elif function=='wright_and_parker(2004)':
         _wright_and_parker(R, g, Ds, nu, u_star, sigma=0.52, w_k=4.0 * 10**-5, slope_inside=2.4*10**-5, out=None)
     elif function=='Fukuda_etal_2023':
-        _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=out)
+        out, flow_power, Phi = _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=out)
     elif function=='Leeuw_2020':
-        _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
+        out, flow_power, Phi = _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
     else:
-        print("Please enter the correct entrainment function")
-        raise ValueError
+        raise ValueError("Please enter the correct entrainment function")
 
 
-    return out
+    return out, flow_power, Phi
 
 
-def _gp1991(R, g, Ds, nu, u_star, p=1.0, out=None):
+def _gp1991(R, g, Ds, nu, u_star, U, h, p=1.0, out=None):
     """ Calculate entrainment rate of basal sediment to suspension
         Based on Garcia and Parker (1991)
 
@@ -165,8 +164,12 @@ def _gp1991(R, g, Ds, nu, u_star, p=1.0, out=None):
     # calculate entrainment rate
     Z = sus_index * Rp ** alpha
     out[:, :] = p * a * Z ** 5 / (1 + (a / 0.3) * Z ** 5)
+    P_f = u_star**2*(np.abs(U))
+    N_f = g*R*h*ws
+    flow_power = P_f/N_f
+    phi = out
 
-    return out
+    return out, flow_power, phi
 
 def _wright_and_parker(R, g, Ds, nu, u_star, sigma, w_k, slope_inside, out=None\
 ):
@@ -210,24 +213,24 @@ def _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=None):
 
     out[:, :] = r0*phi
 
-    return out
+    return out, flow_power, phi
 
 def _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=None):
     """This is a method for calculation of sediment entrainment rate based on Leeuw (2020).
    Two parameter model using u_star (not using u_star_skin) is employed."""
     Fr = np.abs(U)/(g*h)**0.5
     ws = get_ws(R, g, Ds, nu)
-    A = 4.74*10**-4
+    A = 7.04*10**-4
     P1 = u_star/ws
     P2 = Fr
     e1 = 1.71
-    e2 = 1.18
+    e2 = 1.81
 
     out[:, :] = A*P1**e1*P2**e2
 
     P_f = u_star**2*(np.abs(U))
     N_f = g*R*h*ws
     flow_power = P_f/N_f
-    phi = (5.6*10**(-3))*flow_power**(0.36)
+    phi = out
 
-    return out
+    return out, flow_power, phi

@@ -20,6 +20,7 @@ import time
 from tqdm import tqdm
 import pdb
 import yaml
+import netCDF4
 
 """A component of landlab that simulates a turbidity current on 2D grids
 
@@ -502,6 +503,20 @@ class TurbidityCurrent2D(Component):
             self.u_node = grid.at_node["flow__horizontal_velocity_at_node"]
             self.v_node = grid.at_node["flow__vertical_velocity_at_node"]
 
+        try:
+            self.es_i = np.empty([self.number_gclass, grid.number_of_nodes])
+            for i in range(self.number_gclass):
+                self.es_i[i, :] = grid.add_zeros(
+                    "sediment_entrainment_rate_" + str(i),
+                    at="node",
+                    units='',
+                )
+        except FieldError:
+            # Field was already set
+            for i in range(self.number_gclass):
+                self.es_i[i,
+                         :] = grid.at_node["sediment_entrainment_rate_" + str(i)]
+
         self.h += self.h_init
         self.C += self.C_init
         self.Ch += self.h_init * self.C_init
@@ -575,6 +590,40 @@ class TurbidityCurrent2D(Component):
         
         # except FieldError:
         #     self.Fr = grid.at_link["Froude_number"]
+
+        try:
+            self.flow_power = np.empty(
+                [self.number_gclass, grid.number_of_nodes], dtype=float
+            )
+            for i in range(self.number_gclass):
+                self.flow_power[i, :] = grid.add_zeros(
+                    "flow_power_" + str(i),
+                    at="node",
+                    units=self._var_units["bed__sediment_volume_per_unit_area_i"],
+                )
+            
+        except FieldError:
+            for i in range(self.number_gclass):
+                self.flow_power[i, :] = grid.at_node[
+                    "flow_power_" + str(i)
+                ]
+
+        try:
+            self.Phi = np.empty(
+                [self.number_gclass, grid.number_of_nodes], dtype=float
+            )
+            for i in range(self.number_gclass):
+                self.Phi[i, :] = grid.add_zeros(
+                    "Phi_" + str(i),
+                    at="node",
+                    units=self._var_units["bed__sediment_volume_per_unit_area_i"],
+                )
+            
+        except FieldError:
+            for i in range(self.number_gclass):
+                self.Phi[i, :] = grid.at_node[
+                    "Phi_" + str(i)
+                ]
 
         # record active links
         self.active_link_ids = links.active_link_ids(
@@ -842,6 +891,14 @@ class TurbidityCurrent2D(Component):
                 self.bed_thick_i[i, :] = self.grid["node"][
                     "bed__sediment_volume_per_unit_area_" + str(i)
                 ]
+        for i in range(self.number_gclass):
+            self.Phi[i, :] = self.grid["node"][
+                "Phi_" + str(i)
+            ]
+        for i in range(self.number_gclass):
+            self.flow_power[i, :] = self.grid["node"][
+                "flow_power_" + str(i)
+            ]
         self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
         self.u = self.grid["link"]["flow__horizontal_velocity"]
         self.v = self.grid["link"]["flow__vertical_velocity"]
@@ -2094,14 +2151,9 @@ class TurbidityCurrent2D(Component):
         self.Ch_i_prev[:, nodes] = Ch_i[:, nodes]
         # Calculate shear velocity
         u_star = np.sqrt(self.Cf_node[nodes] * U_node[nodes] * U_node[nodes])
-        # with open('shear3.csv', 'a') as f:
-        #     writer = csv.writer(f)
-        #     writer.writerow(u_star)
-
-
 
         # Calculate entrainment rate
-        self.es[:, nodes] = get_es(
+        self.es[:, nodes], self.flow_power[:, nodes], self.Phi[:, nodes] = get_es(
             self.R,
             self.g,
             self.Ds,
@@ -2146,11 +2198,6 @@ class TurbidityCurrent2D(Component):
         # self.bed_change_i[:, nodes] = 0.0
 
         # if erosion is forbidden, out_Ch_i is modified
-        # pdb.set_trace()
-        # 各粒径階ごとに侵食判定を行う
-        # 各粒径階ごとにeroded regionを作成
-        # 侵食された粒径階だけ流れに戻す
-        # 侵食された粒径階のbed changeを0にする
         if self.no_erosion is True:
             eroded_region = np.sum(self.bed_change_i[:, nodes], axis=0) < 0.0
             out_Ch_i[:, nodes[eroded_region]
@@ -2267,6 +2314,7 @@ class TurbidityCurrent2D(Component):
                                 axis=0) / self.lambda_p
         )
 
+        self.es_i[:, nodes] = self.es[:, nodes]
         # calculation of sediment volume per unit area at boundary
         # out_bed_thick_i[:]
 
@@ -2382,6 +2430,15 @@ class TurbidityCurrent2D(Component):
         self.grid.at_link["flow_vertical_velocity__vertical_gradient"] = self.dvdy
         self.grid.at_node["flow_depth__horizontal_gradient"] = self.dhdx
         self.grid.at_node["flow_depth__vertical_gradient"] = self.dhdy
+        for i in range(self.number_gclass):
+            self.grid.at_node["Phi_" +
+                              str(i)] = self.Phi[i, :]
+        for i in range(self.number_gclass):
+            self.grid.at_node["flow_power_" +
+                                str(i)] = self.flow_power[i, :]
+        for i in range(self.number_gclass):
+            self.grid.at_node["sediment_entrainment_rate_" +
+                                str(i)] = self.es[i, :]   
         if self.model == "4eq":
             self.grid.at_link["flow__TKE"] = self.Kh
             self.grid.at_link["flow_TKE__horizontal_gradient"] = self.dKhdx
@@ -2497,7 +2554,7 @@ class TurbidityCurrent2D(Component):
             "flow__vertical_velocity_at_node",
             "flow__surface_elevation",
             "flow__sediment_concentration_total",
-            "bed__thickness",
+            "bed__thickness"
         ]
         # add sediment concentration of each grain size class
         variable_names.extend(
@@ -2524,7 +2581,39 @@ class TurbidityCurrent2D(Component):
             ]
         )
 
+        variable_names.extend(
+            [
+                "flow_power_{}".format(i)
+                for i in range(self.number_gclass)
+            ]
+        )
+
+        variable_names.extend(
+            [
+                "Phi_{}".format(i)
+                for i in range(self.number_gclass)
+            ]
+        )
+
+        variable_names.extend(
+            [
+                "sediment_entrainment_rate_{}".format(i)
+                for i in range(self.number_gclass)
+            ]
+        )
+
         write_netcdf(filename, self.grid, names=variable_names, at="node")
+        # pdb.set_trace()
+        # nc_data = netCDF4.Dataset(filename, 'a')
+        # for i in range(self.number_gclass):
+        #     es = nc_data.createVariable('es_{}'.format(i), np.dtype('float64').char, 
+        #                                 (nc_data.dimensions["nt"], nc_data.dimensions["nj"], nc_data.dimensions["ni"]))
+        #     es.long_name = 'sediment_entrainment_rate_{}'.format(i)
+        #     es.units = 'dimensionless'
+        #     es_i = self.es[i, :].reshape([len(nc_data.dimensions["nj"]), len(nc_data.dimensions["ni"])])
+        #     es = es_i[np.newaxis, :, :]
+        # nc_data.close()
+
 
     def update_boundary_conditions(
         self,
