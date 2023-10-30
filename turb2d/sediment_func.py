@@ -61,7 +61,7 @@ def get_ws(R, g, Ds, nu):
     return ws
 
 
-def get_es(R, g, Ds, nu, u_star, U, h, r0, function="GP1991field", out=None):
+def get_es(R, g, Ds, nu, u_star, U, h, r0, p_gp1991, function="GP1991field", out=None):
     """ Calculate entrainment rate of basal sediment to suspension using
         empirical functions proposed by Garcia and Parker (1991),
         van Rijn (1984), or Dorrell (2018)
@@ -78,6 +78,14 @@ def get_es(R, g, Ds, nu, u_star, U, h, r0, function="GP1991field", out=None):
             kinematic viscosity of water
         u_star : ndarray
             flow shear velocity
+        U: ndarray
+            layer-averaged flow velocity
+        h: ndarray
+            flow depth
+        r0: float
+            Ratio of near-bed concentration to layer-averaged concentration
+        p_gp1991: float
+            coefficient in Garcia and Parker (1991)
         function : string, optional
             Name of emprical function to be used.
 
@@ -104,15 +112,17 @@ def get_es(R, g, Ds, nu, u_star, U, h, r0, function="GP1991field", out=None):
         out = np.zeros([len(Ds), len(u_star)])
 
     if function == "GP1991field":
-        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, U, h, p=0.1, out=out)
+        # p=1.0 in original paper
+        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, p=p_gp1991, out=out)
     elif function == "GP1991exp":
-        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, U, h, p=1.0, out=out)
+        # p=0.1 in original paper
+        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, p=p_gp1991, out=out)
     elif function=='wright_and_parker(2004)':
         _wright_and_parker(R, g, Ds, nu, u_star, sigma=0.52, w_k=4.0 * 10**-5, slope_inside=2.4*10**-5, out=None)
     elif function=='Fukuda_etal_2023':
         out, flow_power, Phi = _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=out)
     elif function=='Leeuw_2020':
-        out, flow_power, Phi =_leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
+        out, flow_power, Phi = _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
     else:
         raise ValueError("Please enter the correct entrainment function")
 
@@ -223,4 +233,4 @@ def _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=None):
     flow_power = P_f/N_f
     phi = out
 
-    return out, flow_power, phi 
+    return out, flow_power, phi
