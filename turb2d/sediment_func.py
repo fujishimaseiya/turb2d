@@ -114,8 +114,7 @@ def get_es(R, g, Ds, nu, u_star, U, h, r0, function="GP1991field", out=None):
     elif function=='Leeuw_2020':
         out, flow_power, Phi =_leeuw_2020(u_star, U, g, R, h, Ds, nu, out=out)
     else:
-        print("Please enter the correct entrainment function")
-        raise ValueError
+        raise ValueError("Please enter the correct entrainment function")
 
 
     return out, flow_power, Phi
@@ -211,11 +210,11 @@ def _leeuw_2020(u_star, U, g, R, h, Ds, nu, out=None):
    Two parameter model using u_star (not using u_star_skin) is employed."""
     Fr = np.abs(U)/(g*h)**0.5
     ws = get_ws(R, g, Ds, nu)
-    A = 4.74*10**-4
+    A = 7.04*10**-4
     P1 = u_star/ws
     P2 = Fr
     e1 = 1.71
-    e2 = 1.18
+    e2 = 1.81
 
     out[:, :] = A*P1**e1*P2**e2
 
