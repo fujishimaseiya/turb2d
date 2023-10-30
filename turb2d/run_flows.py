@@ -340,11 +340,12 @@ class RunMultiFlows():
         #         f.write('{} \n'.format(init_values[0]))
         #     print("Run no. {} timed out: {}".format(init_values[0],self.timelimit))
         for i in range(self.repeat):
-
+            last = 1
             if self.timelimit is None:
                 while (((np.sum(tc.Ch) / Ch_init) > 0.01) and (t < init_values[4])):
                     tc.run_one_step(dt=dt)
                     t += dt
+                    last += last
 
             elif type(self.timelimit) is int:
                 try:
@@ -354,8 +355,9 @@ class RunMultiFlows():
                         while (((np.sum(tc.Ch) / Ch_init) > 0.01) and (t < init_values[4])):
                             # print(t)
                             try:
-                                tc.run_one_step(dt=dt)
+                                tc.run_one_step(dt=dt, repeat=i, last=last)
                                 t += dt
+                                last += last
                             except RuntimeWarning as e:
                                 print("runtimewarning!")
                                 with open('RuntimeWarning.txt', mode='a') as f:
