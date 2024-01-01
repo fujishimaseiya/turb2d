@@ -26,7 +26,9 @@ class RunMultiFlows():
             dirpath = "",
             filename = "num_3000.nc",
             C_ini=0.01,
-            config_file=None,
+            turb2d_config_file=None,
+            run_multi_config_file=None,
+            grid_config_file=None,
             U_ini=0.01,
             r_ini=100,
             h_ini=100,
@@ -39,7 +41,7 @@ class RunMultiFlows():
             repeat = 1,
             flow_param=False
     ):
-        if config_file is None:
+        if turb2d_config_file and run_multi_config_file is None:
             self.C_ini = C_ini
             self.U_ini = U_ini
             self.r_ini = r_ini
@@ -56,31 +58,39 @@ class RunMultiFlows():
             self.repeat = repeat
             self.flow_param = flow_param
         else:
-            with open(config_file, 'r') as yml:
-                config = yaml.safe_load(yml)
+            with open(run_multi_config_file, 'r') as run_multi_yml:
+                run_multi_config = yaml.safe_load(run_multi_yml)
 
-            num_runs = config['run_param']["num_runs"]
-            Cmin, Cmax = [config['run_param']["Cmin"], config['run_param']["Cmax"]]
-            Umin, Umax = [config['run_param']["Umin"], config['run_param']["Umax"]]
-            hmin, hmax = [config['run_param']["hmin"], config['run_param']["hmax"]]
-            rmin, rmax = [config['run_param']["rmin"], config['run_param']["rmax"]]
-            endmin,endmax = [config['run_param']['endmin'], config['run_param']['endmax']]
-            saltmin, saltmax = [config['run_param']['saltmin'], config['run_param']['saltmax']]
-            Cfmin, Cfmax = [config['run_param']['Cfmin'], config['run_param']['Cfmax']]
-            alpha_4eqmin, alpha_4eqmax = [config['run_param']['alpha_4eqmin'], config['run_param']['alpha_4eqmax']]
-            r0min, r0max = [config['run_param']['r0min'], config['run_param']['r0max']]
-            pmin, pmax = [config['run_param']['pmin'], config['run_param']['pmax']]
+            num_runs = run_multi_config["multi_param"]["num_runs"]
+            C_total_min, C_total_max = [run_multi_config["multi_param"]["C_total_min"], run_multi_config["multi_param"]["C_total_max"]]
+            saltmin, saltmax = [run_multi_config["multi_param"]["saltmin"], run_multi_config["multi_param"]["saltmax"]]
+            Umin, Umax = [run_multi_config["multi_param"]["Umin"], run_multi_config["multi_param"]["Umax"]]
+            hmin, hmax = [run_multi_config["multi_param"]["hmin"], run_multi_config["multi_param"]["hmax"]]
+            rmin, rmax = [run_multi_config["multi_param"]["rmin"], run_multi_config["multi_param"]["rmax"]]
+            endmin,endmax = [run_multi_config["multi_param"]['endmin'], run_multi_config["multi_param"]['endmax']]
+            saltmin, saltmax = [run_multi_config["multi_param"]['saltmin'], run_multi_config["multi_param"]['saltmax']]
+            Cfmin, Cfmax = [run_multi_config["multi_param"]['Cfmin'], run_multi_config["multi_param"]['Cfmax']]
+            alpha_4eqmin, alpha_4eqmax = [run_multi_config["multi_param"]['alpha_4eqmin'], run_multi_config["multi_param"]['alpha_4eqmax']]
+            r0min, r0max = [run_multi_config["multi_param"]['r0min'], run_multi_config["multi_param"]['r0max']]
+            pmin, pmax = [run_multi_config["multi_param"]['pmin'], run_multi_config["multi_param"]['pmax']]
+            
+            C_total = np.random.uniform(C_total_min, C_total_max, num_runs)
+            C_ini = []
+            if len(run_multi_config["model_param"]['Ds'])>=2:
+                if run_multi_config["model_param"]["salt"] is True:
+                    frac_conc = np.random.rand(num_runs, run_multi_config["multi_param"]['grain_class_num']-1)
+                    frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
+                    c_i = frac_conc_norm*C_total.reshape(-1, 1)
+                    salt = np.array([np.random.uniform(saltmin, saltmax, num_runs)])
+                    salt = salt.reshape((self.num_runs, 1))
+                    C_ini = np.append(c_i, salt, axis=1)
 
-            if len(config['flow']['Ds'])==1:
-                C_ini = np.random.uniform(Cmin, Cmax, num_runs)
-            elif len(config['flow']['Ds'])>=2:
-                C_ini=[]
-                for i in range(num_runs):
-                    conc = np.random.uniform(Cmin, Cmax, 4)
-                    salt = np.array([np.random.uniform(saltmin, saltmax)])
-                    C_ini.append(np.append(conc, salt))
+                elif run_multi_config["model_param"]["salt"] is False:
+                    frac_conc = np.random.rand(num_runs, run_multi_config["model_param"]['Ds'])
+                    frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
+                    c_i = frac_conc_norm*C_total
+                    C_ini = c_i
             # np.savetxt(os.path.join(dirpath, 'C_ini.csv'), C_ini, delimiter=',')
-
             if hmin == hmax:
                 h_ini = np.full(num_runs, hmin)
             else:
@@ -141,7 +151,7 @@ class RunMultiFlows():
                                'duration': endtime
                                })
             column_name = []
-            for i in range(config['run_param']['grain_class_num']):
+            for i in range(run_multi_config["multi_param"]['grain_class_num']):
                 name = 'C{}'.format(i)
                 column_name.append(name)
             df_conc = pd.DataFrame(C_ini, columns=column_name)
@@ -158,15 +168,16 @@ class RunMultiFlows():
             self.r0 = r0
             self.p_gp1991 = p_gp1991
             self.filename = filename
-            self.config_file = config_file
+            self.grid_config_file = grid_config_file
+            self.turb2d_config = turb2d_config_file
             self.dirpath = dirpath
-            self.config = config
-            self.num_runs = config['run_param']['num_runs']
-            self.processors = config['run_param']['processors']
-            self.flow_type = config['run_param']['flow_type']
-            self.timelimit = config['run_param']['timelimit']
-            self.grain_class_num = config['run_param']['grain_class_num']
-            self.repeat = config['run_param']['repeat']
+            self.run_multi_config = run_multi_config
+            self.num_runs = run_multi_config["multi_param"]['num_runs']
+            self.processors = run_multi_config["multi_param"]['processors']
+            self.flow_type = run_multi_config["multi_param"]['flow_type']
+            self.timelimit = run_multi_config["multi_param"]['timelimit']
+            self.grain_class_num = run_multi_config["multi_param"]['grain_class_num']
+            self.repeat = run_multi_config["multi_param"]['repeat']
 
 
         # self.num_runs = C_ini.shape[0]
@@ -235,7 +246,7 @@ class RunMultiFlows():
     def produce_continuous_flow(self, C_ini, U_ini, h_ini, cf_ini, alpha4eq_ini, r0_ini, p_gp1991):
 
         grid = create_topography(
-            config_file=self.config_file
+            config_file=self.grid_config_file
         )
         
         grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
@@ -350,48 +361,44 @@ class RunMultiFlows():
         t = 0
         dt = 20
 
-        # last=200
-        # try:
-        #     with self.timeout(self.timelimit):
-        #         for j in range(1, last + 1):
-        #             try:
-        #                 tc.run_one_step(dt=dt)
-        #                 if np.sum(tc.C * tc.h) / Ch_init < 0.005:
-        #                     break
-        #             except RuntimeWarning as e:
-        #                 with open('RuntimeWarning.txt', mode='a+') as f:
-        #                     f.write('{} \n'.format(init_values[0]))
-        #                 print("Run no. {} RuntimeWarning".format(init_values[0]))
-        #                 sys.exit(1)
-        # except self.TimeoutException as e:
-        #     with open('timeout.txt', mode='a+') as f:
-        #         f.write('{} \n'.format(init_values[0]))
-        #     print("Run no. {} timed out: {}".format(init_values[0],self.timelimit))
         for i in range(self.repeat):
             last = 1
             if self.timelimit is None:
-                while (((np.sum(tc.Ch) / Ch_init) > 0.01) and (t < init_values[4])):
-                    tc.run_one_step(dt=dt, repeat=i, last=t+1)
-                    t += dt
-                    last += last
-
+                if self.flow_type == "surge":
+                    while (((np.sum(tc.Ch) / Ch_init) > 0.01) and (t < init_values[4])):
+                        tc.run_one_step(dt=dt, repeat=i, last=t+1)
+                        t += dt
+                        last += last
+                elif self.flow_type == "continuous":
+                    tc.run_one_step(dt=init_values[4], repeat=i, last=last)
+                else:
+                    raise ValueError('An invalid value was entered in timelimit.')
+                    
             elif type(self.timelimit) is int:
                 try:
                     # I used sytax "with" because it can guarantee that critical post-processing 
                     # (code block limited by 'finally') will always be performed. 
                     with self.timeout(self.timelimit):
-                        while (((np.sum(tc.Ch) / Ch_init) > 0.01) and (t < init_values[4])):
-                            # print(t)
-                            try:
-                                tc.run_one_step(dt=dt, repeat=i, last=last)
-                                t += dt
-                                last += last
-                            except RuntimeWarning as e:
-                                print("runtimewarning!")
-                                with open('RuntimeWarning.txt', mode='a') as f:
-                                    f.write('{} \n'.format(init_values[0]))
-                                print("Run no. {} RuntimeWarning".format(init_values[0]))
-                                sys.exit(1)
+                        if self.flow_type == "surge":
+                            while (((np.sum(tc.Ch) / Ch_init) > 0.01) and (t < init_values[4])):
+                                # print(t)
+                                try:
+                                    tc.run_one_step(dt=dt, repeat=i, last=last)
+                                    t += dt
+                                    last += last
+                                except RuntimeWarning as e:
+                                    print("runtimewarning!")
+                                    with open('RuntimeWarning.txt', mode='a') as f:
+                                        f.write('{} \n'.format(init_values[0]))
+                                    print("Run no. {} RuntimeWarning".format(init_values[0]))
+                                    sys.exit(1)
+
+                        elif self.flow_type == "continuous":
+                            tc.run_one_step(dt=init_values[4], repeat=i, last=last)
+                            
+                        else:
+                            raise ValueError('An invalid value was entered in flow type.')
+                        
                 except self.TimeoutException as e:
                     # print("qwerty")
                     with open(os.path.join(self.dirpath,'timeout.txt'), mode='a') as f:

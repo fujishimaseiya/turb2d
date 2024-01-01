@@ -1,0 +1,12 @@
+length: 4.5
+width: 1.9
+spacing: 0.05
+slope_outside: 0.1
+slope_inside: 0.1
+slope_basin: 0.05
+slope_basin_break: 3.0
+canyon_basin_break: 3.0
+canyon_center: 0.8
+canyon_half_width: 1.0
+canyon: canyon
+noise: 0.0

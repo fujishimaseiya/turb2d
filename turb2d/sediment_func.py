@@ -113,10 +113,10 @@ def get_es(R, g, Ds, nu, u_star, U, h, r0, p_gp1991, function="GP1991field", out
 
     if function == "GP1991field":
         # p=1.0 in original paper
-        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, p=p_gp1991, out=out)
+        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, U, h, p=p_gp1991, out=out)
     elif function == "GP1991exp":
         # p=0.1 in original paper
-        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, p=p_gp1991, out=out)
+        out, flow_power, Phi = _gp1991(R, g, Ds, nu, u_star, U, h, p=p_gp1991, out=out)
     elif function=='wright_and_parker(2004)':
         _wright_and_parker(R, g, Ds, nu, u_star, sigma=0.52, w_k=4.0 * 10**-5, slope_inside=2.4*10**-5, out=None)
     elif function=='Fukuda_etal_2023':

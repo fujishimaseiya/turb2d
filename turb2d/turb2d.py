@@ -268,41 +268,41 @@ class TurbidityCurrent2D(Component):
         else:
             with open(config_path) as yml:
                 config = yaml.safe_load(yml)
-            self.h_init = config['flow']['h_init']
-            self.alpha = config['flow']['alpha']
-            self.Cf = config['flow']['Cf']
-            self.g = config['flow']['g']
-            self.R = config['flow']['R']
-            if type(config['flow']['Ds']) is float:
-                self.Ds = np.array(config['flow']['Ds']).reshape(1, 1)
+            self.h_init = config['model_param']['h_init']
+            self.alpha = config['model_param']['alpha']
+            self.Cf = config['model_param']['Cf']
+            self.g = config['model_param']['g']
+            self.R = config['model_param']['R']
+            if type(config['model_param']['Ds']) is float:
+                self.Ds = np.array(config['model_param']['Ds']).reshape(1, 1)
             else:
                 # FIXME how explain list in yaml?
-                self.Ds = np.array(config['flow']['Ds']).reshape(len(config['flow']['Ds']), 1)
+                self.Ds = np.array(config['model_param']['Ds']).reshape(len(config['model_param']['Ds']), 1)
             self.number_gclass = len(self.Ds)
-            self.Ch_w = config['flow']['Ch_w']
-            self.h_w = config['flow']['h_w']
-            self.nu = config['flow']['nu']
-            self.kappa = config['flow']['kappa']
-            self.nu_a = config['flow']['nu_a']
-            self.r0 = config['flow']['r0']
-            self.lambda_p = config['flow']['lambda_p']
-            self.implicit_num = config['flow']['implicit_num']
-            self.implicit_threshold = config['flow']['implicit_threshold']
-            self.C_init = config['flow']['C_init']
-            self.gamma = config['flow']['gamma']
-            self.la = config['flow']['la']
-            self.water_entrainment = config['flow']['water_entrainment']
-            self.suspension = config['flow']['suspension']
-            self.sed_entrainment_func = config['flow']['sed_entrainment_func']
-            self.model = config['flow']['model']
-            self.karman = config['flow']['karman']
-            self.no_erosion = config['flow']['no_erosion']
+            self.Ch_w = config['model_param']['Ch_w']
+            self.h_w = config['model_param']['h_w']
+            self.nu = config['model_param']['nu']
+            self.kappa = config['model_param']['kappa']
+            self.nu_a = config['model_param']['nu_a']
+            self.r0 = config['model_param']['r0']
+            self.lambda_p = config['model_param']['lambda_p']
+            self.implicit_num = config['model_param']['implicit_num']
+            self.implicit_threshold = config['model_param']['implicit_threshold']
+            self.C_init = config['model_param']['C_init']
+            self.gamma = config['model_param']['gamma']
+            self.la = config['model_param']['la']
+            self.water_entrainment = config['model_param']['water_entrainment']
+            self.suspension = config['model_param']['suspension']
+            self.sed_entrainment_func = config['model_param']['sed_entrainment_func']
+            self.model = config['model_param']['model']
+            self.karman = config['model_param']['karman']
+            self.no_erosion = config['model_param']['no_erosion']
             # self.der_active_layer = 0
-            self.salt = config['flow']['salt']
-            self.alpha_4eq = config['flow']['alpha_4eq']
-            self.dx = config['grid']['spacing']
+            self.salt = config['model_param']['salt']
+            self.alpha_4eq = config['model_param']['alpha_4eq']
+            self.dx = grid.dx
             if self.sed_entrainment_func == "GP1991field" or self.sed_entrainment_func == "GP1991exp":
-                self.p_gp1991 = config['flow']['p']
+                self.p_gp1991 = config['model_param']['p']
             else:
                 self.p_gp1991 = None
 
@@ -655,7 +655,7 @@ class TurbidityCurrent2D(Component):
 
         # friction coefficients at grids
         self.Cf_link = np.ones(grid.number_of_links) * self.Cf
-        self.Cf_node = np.ones(grid.number_of_links) * self.Cf
+        self.Cf_node = np.ones(grid.number_of_nodes) * self.Cf
 
         # composite velocity
         self.U = np.zeros(grid.number_of_links)
@@ -1029,31 +1029,38 @@ class TurbidityCurrent2D(Component):
         # Update bed thickness and record results in the grid
         self.elapsed_time += self.local_elapsed_time
         self.bed_thick = self.eta - self.eta_init
-        import warnings
-        warnings.simplefilter('error')
-        if self.salt is True:
-            for i in range(self.bed_thick_i.shape[0]-1):
-                sed_volume_grad_anchor = np.zeros(len(self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes]))
-                sed_volume_fixed_anchor = np.zeros(len(self.bed_thick_i[i, :][self.fixed_value_anchor_nodes]))
-                for j in range(len(sed_volume_grad_anchor)):
-                    try:
-                        sed_volume_grad_anchor[j] = self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes][j]/self.bed_thick[self.fixed_grad_anchor_nodes][j]
-                    except RuntimeWarning:
-                        sed_volume_grad_anchor[j] = 0.
-                for k in range(len(sed_volume_fixed_anchor)):
-                    try:
-                        sed_volume_fixed_anchor[k] = self.bed_thick_i[i, :][self.fixed_value_anchor_nodes][k]/self.bed_thick[self.fixed_value_anchor_nodes][k]
-                    except RuntimeWarning:
-                        sed_volume_fixed_anchor[k] = 0.
-                self.bed_thick_i[i, :][self.fixed_grad_nodes] = self.bed_thick[self.fixed_grad_nodes]*sed_volume_grad_anchor
-                self.bed_thick_i[i, :][self.fixed_value_nodes] = self.bed_thick[self.fixed_value_nodes]*sed_volume_fixed_anchor
+        self.bed_thick[self.grid.nodes_at_left_edge] = 0.0
+        self.bed_thick[self.grid.nodes_at_right_edge] = 0.0
+        self.bed_thick[self.grid.nodes_at_bottom_edge] = 0.0
+        # self.bed_thick[self.grid.nodes_at_right_edge] = 0.0
+        # self.bed_thick[self.grid.nodes_at_left_edge] = 0.0
+        # self.bed_thick[self.grid.nodes_at_bottom_edge] = 0.0
+        # self.bed_thick[self.grid.nodes_at_top_edge] = self.bed_thick[self.fixed_value_anchor_nodes]
+        # import warnings
+        # warnings.simplefilter('error')
+        # if self.salt is True:
+        #     for i in range(self.bed_thick_i.shape[0]-1):
+        #         sed_volume_grad_anchor = np.zeros(len(self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes]))
+        #         sed_volume_fixed_anchor = np.zeros(len(self.bed_thick_i[i, :][self.fixed_value_anchor_nodes]))
+        #         for j in range(len(sed_volume_grad_anchor)):
+        #             try:
+        #                 sed_volume_grad_anchor[j] = self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes][j]/self.bed_thick[self.fixed_grad_anchor_nodes][j]
+        #             except RuntimeWarning:
+        #                 sed_volume_grad_anchor[j] = 0.
+        #         for k in range(len(sed_volume_fixed_anchor)):
+        #             try:
+        #                 sed_volume_fixed_anchor[k] = self.bed_thick_i[i, :][self.fixed_value_anchor_nodes][k]/self.bed_thick[self.fixed_value_anchor_nodes][k]
+        #             except RuntimeWarning:
+        #                 sed_volume_fixed_anchor[k] = 0.
+        #         self.bed_thick_i[i, :][self.fixed_grad_nodes] = self.bed_thick[self.fixed_grad_nodes]*sed_volume_grad_anchor
+        #         self.bed_thick_i[i, :][self.fixed_value_nodes] = self.bed_thick[self.fixed_value_nodes]*sed_volume_fixed_anchor
 
-        elif self.salt is False:
-            for i in range(self.bed_thick_i.shape[0]):
-                sed_volume_fixed_anchor = self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes][j]/self.bed_thick[self.fixed_grad_anchor_nodes][j]
-                sed_volume_fixed_anchor = self.bed_thick_i[i, :][self.fixed_value_anchor_nodes][j]/self.bed_thick[self.fixed_value_anchor_nodes][j]
-                self.bed_thick_i[i, :][self.fixed_grad_nodes] = self.bed_thick[self.fixed_grad_nodes]*sed_volume_grad_anchor
-                self.bed_thick_i[i, :][self.fixed_value_nodes] = self.bed_thick[self.fixed_value_nodes]*sed_volume_fixed_anchor
+        # elif self.salt is False:
+        #     for i in range(self.bed_thick_i.shape[0]):
+        #         sed_volume_fixed_anchor = self.bed_thick_i[i, :][self.fixed_grad_anchor_nodes][j]/self.bed_thick[self.fixed_grad_anchor_nodes][j]
+        #         sed_volume_fixed_anchor = self.bed_thick_i[i, :][self.fixed_value_anchor_nodes][j]/self.bed_thick[self.fixed_value_anchor_nodes][j]
+        #         self.bed_thick_i[i, :][self.fixed_grad_nodes] = self.bed_thick[self.fixed_grad_nodes]*sed_volume_grad_anchor
+        #         self.bed_thick_i[i, :][self.fixed_value_nodes] = self.bed_thick[self.fixed_value_nodes]*sed_volume_fixed_anchor
 
 
         self.copy_values_to_grid()
@@ -2243,29 +2250,29 @@ class TurbidityCurrent2D(Component):
                 self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
                     - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
                 
-            elif self.no_erosion is False:
-                # check eroded region
-                eroded_region = self.bed_change_i[:, nodes] < 0.0
-                # calculate derivaition of this time step
-                # if there is eroded region, interfacial exchange fraction (grain size fraction of substrate) is calculated.
-                if self.salt is True:
-                    exchange_frac = np.zeros(self.bed_active_layer.shape[0])
-                    # Grain size equivalent to salt makes the exchange rate 0
-                    exchange_frac[:(self.bed_active_layer.shape[0]-1)] = 1/(self.number_gclass - 1)
-                elif self.salt is False:
-                    exchange_frac = 1/self.number_gclass
+            # elif self.no_erosion is False:
+            #     # check eroded region
+            #     eroded_region = self.bed_change_i[:, nodes] < 0.0
+            #     # calculate derivaition of this time step
+            #     # if there is eroded region, interfacial exchange fraction (grain size fraction of substrate) is calculated.
+            #     if self.salt is True:
+            #         exchange_frac = np.zeros(self.bed_active_layer.shape[0])
+            #         # Grain size equivalent to salt makes the exchange rate 0
+            #         exchange_frac[:(self.bed_active_layer.shape[0]-1)] = 1/(self.number_gclass - 1)
+            #     elif self.salt is False:
+            #         exchange_frac = 1/self.number_gclass
                     
-                # calculate deriviation of active layer
-                for i in range(self.bed_active_layer.shape[0]):
-                    # in eroded region, the sediment is supplied from the substrate to the active layer by the amount of eroded sediment
-                    self.der_bed_active_layer[:, nodes[eroded_region[i, :]]] = 1/self.la*(ws/(1-self.lambda_p)\
-                    *(r0*out_Ch_i[:, nodes[eroded_region[i, :]]]/h[nodes[eroded_region[i, :]]]-self.bed_active_layer[:, nodes[eroded_region[i, :]]]*self.es[:, nodes[eroded_region[i, :]]]) \
-                    - exchange_frac[i] * np.sum(self.bed_change_i[:, nodes[eroded_region[i, :]]],axis=0))
+            #     # calculate deriviation of active layer
+            #     for i in range(self.bed_active_layer.shape[0]):
+            #         # in eroded region, the sediment is supplied from the substrate to the active layer by the amount of eroded sediment
+            #         self.der_bed_active_layer[:, nodes[eroded_region[i, :]]] = 1/self.la*(ws/(1-self.lambda_p)\
+            #         *(r0*out_Ch_i[:, nodes[eroded_region[i, :]]]/h[nodes[eroded_region[i, :]]]-self.bed_active_layer[:, nodes[eroded_region[i, :]]]*self.es[:, nodes[eroded_region[i, :]]]) \
+            #         - exchange_frac[i] * np.sum(self.bed_change_i[:, nodes[eroded_region[i, :]]],axis=0))
 
-                    # in no eroded region, interfacial exchange rate is the same as active layer fraction
-                    self.der_bed_active_layer[:, nodes[~eroded_region[i, :]]] = 1/self.la*(ws/(1-self.lambda_p)\
-                    *(r0*out_Ch_i[:, nodes[~eroded_region[i, :]]]/h[nodes[~eroded_region[i, :]]]-self.bed_active_layer[:, nodes[~eroded_region[i, :]]]*self.es[:, nodes[~eroded_region[i, :]]]) \
-                    - self.bed_active_layer[:, nodes[~eroded_region[i, :]]] * np.sum(self.bed_change_i[:, nodes[~eroded_region[i, :]]],axis=0))
+            #         # in no eroded region, interfacial exchange rate is the same as active layer fraction
+            #         self.der_bed_active_layer[:, nodes[~eroded_region[i, :]]] = 1/self.la*(ws/(1-self.lambda_p)\
+            #         *(r0*out_Ch_i[:, nodes[~eroded_region[i, :]]]/h[nodes[~eroded_region[i, :]]]-self.bed_active_layer[:, nodes[~eroded_region[i, :]]]*self.es[:, nodes[~eroded_region[i, :]]]) \
+            #         - self.bed_active_layer[:, nodes[~eroded_region[i, :]]] * np.sum(self.bed_change_i[:, nodes[~eroded_region[i, :]]],axis=0))
             # calculate bed active layer of next time step
             self.bed_active_layer[:, nodes] = self.bed_active_layer[:, nodes] + \
                 1/12*(23*self.der_bed_active_layer[:, nodes] - 16*self.prev_der_active_layer[:, nodes]+ 5 *self.prev_prev_der_active_layer[:, nodes])*dt
@@ -2667,8 +2674,8 @@ class TurbidityCurrent2D(Component):
 
         if Kh is not None:
             Kh[self.fixed_grad_links] = Kh[self.fixed_grad_anchor_links]
-            Kh[self.fixed_grad_link_at_north[Kh[self.fixed_grad_link_at_north] < 0]] = 0
-            Kh[self.fixed_grad_link_at_south[Kh[self.fixed_grad_link_at_south] > 0]] = 0
+            # Kh[self.fixed_grad_link_at_north[Kh[self.fixed_grad_link_at_north] < 0]] = 0
+            # Kh[self.fixed_grad_link_at_south[Kh[self.fixed_grad_link_at_south] > 0]] = 0
             Kh[self.fixed_value_links] = Kh[self.fixed_value_anchor_links]
 
         if h_link is not None:

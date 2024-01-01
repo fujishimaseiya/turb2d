@@ -83,18 +83,18 @@ def create_topography(
     if os.path.exists(config_file):
         with open(config_file) as yml:
             config = yaml.safe_load(yml)
-        length=config['grid']['length']
-        width=config['grid']['width']
-        spacing=config['grid']['spacing']
-        slope_outside=config['grid']['slope_outside']
-        slope_inside=config['grid']['slope_inside']
-        slope_basin=config['grid']['slope_basin']
-        slope_basin_break=config['grid']['slope_basin_break']
-        canyon_basin_break=config['grid']['canyon_basin_break']
-        canyon_center=config['grid']['canyon_center']
-        canyon_half_width=config['grid']['canyon_half_width']
-        canyon=config['grid']['canyon']
-        noise=config['grid']['noise']
+        length=config['grid_param']['length']
+        width=config['grid_param']['width']
+        spacing=config['grid_param']['spacing']
+        slope_outside=config['grid_param']['slope_outside']
+        slope_inside=config['grid_param']['slope_inside']
+        slope_basin=config['grid_param']['slope_basin']
+        slope_basin_break=config['grid_param']['slope_basin_break']
+        canyon_basin_break=config['grid_param']['canyon_basin_break']
+        canyon_center=config['grid_param']['canyon_center']
+        canyon_half_width=config['grid_param']['canyon_half_width']
+        canyon=config['grid_param']['canyon']
+        noise=config['grid_param']['noise']
     # making grid
     # size of calculation domain is 4 x 8 km with dx = 20 m
     length = Decimal(str(length))
