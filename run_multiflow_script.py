@@ -13,24 +13,27 @@ import netCDF4 as nc
 import matplotlib.pyplot as plt
 
 if __name__ ==  '__main__':
-    config_file = "config.yml"
+    config_file = "config_runmulti.yml"
     with open(config_file, 'r') as yml:
         config = yaml.safe_load(yml)
-        dirpath = config['save']['dirpath']
-        dirname = config['save']['dirname']
-        filename = config['save']['filename']
-    savedir = os.path.join(dirpath, dirname)
+        dirpath = config['multi_param']['dirpath']
+        filename = config['multi_param']['filename']
+    savedir = os.path.join(dirpath, filename)
     if not os.path.exists(savedir):
         os.mkdir(savedir)
 
     shutil.copy("run_multiflow_script.py", savedir)
     shutil.copy("turb2d/run_flows.py", savedir)
     shutil.copy(config_file, savedir)
+    shutil.copy("config_grid.yml", savedir)
+    shutil.copy("config_turb2d.yml", savedir)
 
     rmf = RunMultiFlows(
         dirpath = savedir,
         filename = os.path.join(savedir, filename),
-        config_file = 'config.yml'
+        turb2d_config_file='config_turb2d.yml',
+        run_multi_config_file = 'config_runmulti.yml',
+        grid_config_file='config_grid.yml'
     )
 
     rmf.create_datafile()

@@ -14,10 +14,10 @@ from landlab import FieldError
 # from landlab import FIXED_GRADIENT_BOUNDARY, FIXED_VALUE_BOUNDARY
 import pdb
 from tqdm import tqdm
-
+import matplotlib.pyplot as plt
 
 grid = create_topography(
-    config_file="config.yml"
+    config_file="config_grid.yml"
         )
         
 grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
@@ -26,15 +26,15 @@ grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 
 
-C_ini = [0.001, 0.001, 0.001, 0.001, 0.001]
-h_ini = 0.20
-U_ini = 0.40
+C_ini = [0.00005, 0.00005, 0.00005, 0.00005, 0.00005]
+h_ini = 0.2
+U_ini = 0.2
 
 # set inlet
-inlet = np.where((grid.x_of_node > 0.63)
-                        & (grid.x_of_node < 1.27) & (grid.y_of_node > 4.20))
-inlet_link = np.where((grid.midpoint_of_link[:,0] > 0.63) & (grid.midpoint_of_link[:,0] < 1.27)
-                        & (grid.midpoint_of_link[:,1] > 4.20))
+inlet = np.where((grid.x_of_node > 0.715)
+                        & (grid.x_of_node < 1.185) & (grid.y_of_node > 4.35))
+inlet_link = np.where((grid.midpoint_of_link[:,0] > 0.715) & (grid.midpoint_of_link[:,0] < 1.185)
+                        & (grid.midpoint_of_link[:,1] > 4.35))
 
 # check number of grain size classes
 if type(C_ini) is float or type(C_ini) is np.float64:
@@ -119,26 +119,66 @@ grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
 # pdb.set_trace()
 # making turbidity current object
 # last element of Ds has no setting velocity (salt).
+pdb.set_trace()
 tc = TurbidityCurrent2D(grid,
-                        config_path="config.yml")
+                        config_path="config_turb2d.yml")
 
 
 path = '..'
-dirname = 'test'
+dirname = 'test7'
 dirpath = os.path.join(path, dirname)
 if not os.path.exists(dirpath):
     os.mkdir(dirpath)
 shutil.copy('run_turb2d_script.py', dirpath)
-shutil.copy('config.yml', dirpath)
+shutil.copy('config_grid.yml', dirpath)
+shutil.copy('config_runmulti.yml', dirpath)
+shutil.copy('config_turb2d.yml', dirpath)
 # start calculation
 t = time.time()
 tc.save_nc('{}/tc{:04d}.nc'.format(dirpath, 0))
 Ch_init = np.sum(tc.C * tc.h)
-last = 40
+last = 100
 num = 1
 for j in range(1):
     for i in tqdm(range(1, last + 1), disable=False):
         tc.run_one_step(dt=1.0, repeat=j, last=i)
+        # for k in range(5):
+        #     fig,ax = plt.subplots()
+        #     arr = tc.der_Ch_i[j, :].reshape(-1, 39)
+        #     ax.plot(arr[:, 19])
+        #     # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
+        #     # fig.colorbar(im, ax=ax)
+        #     plt.savefig(os.path.join("../test3/der_ch", "derch_{}_{}.png".format(i, k)))
+        #     plt.close()
+        #     fig,ax = plt.subplots()
+        #     arr = tc.Ch_i[j, :].reshape(-1, 39)
+        #     h = tc.h[:].reshape(-1, 39)+1e-5
+        #     ax.plot(arr[:, 19]/h[:, 19])
+        #     # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
+        #     # fig.colorbar(im, ax=ax)
+        #     plt.savefig(os.path.join("../test3/c", "C_{}_{}.png".format(i, k)))
+        #     plt.close()
+        #     fig,ax = plt.subplots()
+        #     arr = tc.es[j, :].reshape(-1, 39)
+        #     ax.plot(arr[:, 19])
+        #     # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
+        #     # fig.colorbar(im, ax=ax)
+        #     plt.savefig(os.path.join("../test3/es", "es_{}_{}.png".format(i, k)))
+        #     plt.close()
+        #     fig,ax = plt.subplots()
+        #     arr = tc.bed_active_layer[j, :].reshape(-1, 39)
+        #     ax.plot(arr[:, 19])
+        #     # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
+        #     # fig.colorbar(im, ax=ax)
+        #     plt.savefig(os.path.join("../test3/act_layer", "act_layer_{}_{}.png".format(i, k)))
+        #     plt.close()
+        # fig,ax = plt.subplots()
+        # arr = tc.h[:].reshape(-1, 39)
+        # ax.plot(arr[:, 19])
+        # # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
+        # # fig.colorbar(im, ax=ax)
+        # plt.savefig(os.path.join("../test3/h", "h_{}.png".format(i)))
+        # plt.close()
         tc.save_nc('{}/tc{:04d}.nc'.format(dirpath, num))
         if np.sum(tc.C * tc.h) / Ch_init < 0.01:
             break
