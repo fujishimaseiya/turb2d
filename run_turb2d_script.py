@@ -14,10 +14,9 @@ from landlab import FieldError
 # from landlab import FIXED_GRADIENT_BOUNDARY, FIXED_VALUE_BOUNDARY
 import pdb
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 grid = create_topography(
-    config_file="config_grid.yml"
+    config_file="config_runturb2d.yml"
         )
         
 grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
@@ -121,11 +120,11 @@ grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
 # last element of Ds has no setting velocity (salt).
 pdb.set_trace()
 tc = TurbidityCurrent2D(grid,
-                        config_path="config_turb2d.yml")
+                        config_path="config_runturb2d.yml")
 
 
 path = '..'
-dirname = 'test7'
+dirname = 'test_runturb2d'
 dirpath = os.path.join(path, dirname)
 if not os.path.exists(dirpath):
     os.mkdir(dirpath)
@@ -142,43 +141,6 @@ num = 1
 for j in range(1):
     for i in tqdm(range(1, last + 1), disable=False):
         tc.run_one_step(dt=1.0, repeat=j, last=i)
-        # for k in range(5):
-        #     fig,ax = plt.subplots()
-        #     arr = tc.der_Ch_i[j, :].reshape(-1, 39)
-        #     ax.plot(arr[:, 19])
-        #     # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
-        #     # fig.colorbar(im, ax=ax)
-        #     plt.savefig(os.path.join("../test3/der_ch", "derch_{}_{}.png".format(i, k)))
-        #     plt.close()
-        #     fig,ax = plt.subplots()
-        #     arr = tc.Ch_i[j, :].reshape(-1, 39)
-        #     h = tc.h[:].reshape(-1, 39)+1e-5
-        #     ax.plot(arr[:, 19]/h[:, 19])
-        #     # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
-        #     # fig.colorbar(im, ax=ax)
-        #     plt.savefig(os.path.join("../test3/c", "C_{}_{}.png".format(i, k)))
-        #     plt.close()
-        #     fig,ax = plt.subplots()
-        #     arr = tc.es[j, :].reshape(-1, 39)
-        #     ax.plot(arr[:, 19])
-        #     # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
-        #     # fig.colorbar(im, ax=ax)
-        #     plt.savefig(os.path.join("../test3/es", "es_{}_{}.png".format(i, k)))
-        #     plt.close()
-        #     fig,ax = plt.subplots()
-        #     arr = tc.bed_active_layer[j, :].reshape(-1, 39)
-        #     ax.plot(arr[:, 19])
-        #     # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
-        #     # fig.colorbar(im, ax=ax)
-        #     plt.savefig(os.path.join("../test3/act_layer", "act_layer_{}_{}.png".format(i, k)))
-        #     plt.close()
-        # fig,ax = plt.subplots()
-        # arr = tc.h[:].reshape(-1, 39)
-        # ax.plot(arr[:, 19])
-        # # im=ax.imshow(tc.der_Ch_i[j, :].reshape(-1, 39))
-        # # fig.colorbar(im, ax=ax)
-        # plt.savefig(os.path.join("../test3/h", "h_{}.png".format(i)))
-        # plt.close()
         tc.save_nc('{}/tc{:04d}.nc'.format(dirpath, num))
         if np.sum(tc.C * tc.h) / Ch_init < 0.01:
             break

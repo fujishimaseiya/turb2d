@@ -16,24 +16,19 @@ if __name__ ==  '__main__':
     config_file = "config_runmulti.yml"
     with open(config_file, 'r') as yml:
         config = yaml.safe_load(yml)
-        dirpath = config['multi_param']['dirpath']
+        savedir = config['multi_param']['dirpath']
         filename = config['multi_param']['filename']
-    savedir = os.path.join(dirpath, filename)
     if not os.path.exists(savedir):
         os.mkdir(savedir)
 
     shutil.copy("run_multiflow_script.py", savedir)
     shutil.copy("turb2d/run_flows.py", savedir)
     shutil.copy(config_file, savedir)
-    shutil.copy("config_grid.yml", savedir)
-    shutil.copy("config_turb2d.yml", savedir)
 
     rmf = RunMultiFlows(
         dirpath = savedir,
         filename = os.path.join(savedir, filename),
-        turb2d_config_file='config_turb2d.yml',
-        run_multi_config_file = 'config_runmulti.yml',
-        grid_config_file='config_grid.yml'
+        run_multi_config_file = 'config_runmulti.yml'
     )
 
     rmf.create_datafile()
@@ -52,7 +47,7 @@ if __name__ ==  '__main__':
         if not os.path.exists(imgdir):
             os.mkdir(imgdir)
         savedir_list.append(imgdir)
-    read_num = 5
+    read_num = 1
     fn = os.path.join(savedir, filename)
     ds = nc.Dataset(fn)
     for j in range(len(var_list)):

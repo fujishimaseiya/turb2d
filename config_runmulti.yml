@@ -1,8 +1,8 @@
 multi_param:
   dirpath: ..
   filename: run_3000.nc
-  num_runs: 10
-  processors: 2
+  num_runs: 1
+  processors: 1
   grain_class_num: 5
   C_total_min: 0.0001
   C_total_max: 0.005
@@ -12,12 +12,14 @@ multi_param:
   hmax: 0.3
   rmin: # None
   rmax: # None
-  endmin: 30
-  endmax: 180
+  endmin: 10
+  endmax: 10
   saltmin: 0.0001
   saltmax: 0.005
   Cfmin: 0.001
   Cfmax: 0.005
+  pmin: 0.1
+  pmax: 1.0
   alpha_4eqmin: 0.1
   alpha_4eqmax: 0.6
   r0min: 1.0

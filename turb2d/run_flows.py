@@ -26,9 +26,7 @@ class RunMultiFlows():
             dirpath = "",
             filename = "num_3000.nc",
             C_ini=0.01,
-            turb2d_config_file=None,
             run_multi_config_file=None,
-            grid_config_file=None,
             U_ini=0.01,
             r_ini=100,
             h_ini=100,
@@ -41,7 +39,7 @@ class RunMultiFlows():
             repeat = 1,
             flow_param=False
     ):
-        if turb2d_config_file and run_multi_config_file is None:
+        if run_multi_config_file is None:
             self.C_ini = C_ini
             self.U_ini = U_ini
             self.r_ini = r_ini
@@ -75,14 +73,16 @@ class RunMultiFlows():
             pmin, pmax = [run_multi_config["multi_param"]['pmin'], run_multi_config["multi_param"]['pmax']]
             
             C_total = np.random.uniform(C_total_min, C_total_max, num_runs)
-            C_ini = []
-            if len(run_multi_config["model_param"]['Ds'])>=2:
+            if len(run_multi_config["model_param"]['Ds']) == 1:
+                C_ini = C_total
+            elif len(run_multi_config["model_param"]['Ds'])>=2:
+                C_ini = []
                 if run_multi_config["model_param"]["salt"] is True:
                     frac_conc = np.random.rand(num_runs, run_multi_config["multi_param"]['grain_class_num']-1)
                     frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
                     c_i = frac_conc_norm*C_total.reshape(-1, 1)
                     salt = np.array([np.random.uniform(saltmin, saltmax, num_runs)])
-                    salt = salt.reshape((self.num_runs, 1))
+                    salt = salt.reshape((run_multi_config["multi_param"]["num_runs"], 1))
                     C_ini = np.append(c_i, salt, axis=1)
 
                 elif run_multi_config["model_param"]["salt"] is False:
@@ -168,10 +168,9 @@ class RunMultiFlows():
             self.r0 = r0
             self.p_gp1991 = p_gp1991
             self.filename = filename
-            self.grid_config_file = grid_config_file
-            self.turb2d_config = turb2d_config_file
             self.dirpath = dirpath
             self.run_multi_config = run_multi_config
+            self.run_multi_config_file = run_multi_config_file
             self.num_runs = run_multi_config["multi_param"]['num_runs']
             self.processors = run_multi_config["multi_param"]['processors']
             self.flow_type = run_multi_config["multi_param"]['flow_type']
@@ -246,7 +245,7 @@ class RunMultiFlows():
     def produce_continuous_flow(self, C_ini, U_ini, h_ini, cf_ini, alpha4eq_ini, r0_ini, p_gp1991):
 
         grid = create_topography(
-            config_file=self.grid_config_file
+            config_file=self.run_multi_config_file
         )
         
         grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
@@ -314,30 +313,30 @@ class RunMultiFlows():
         grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
         
         tc = TurbidityCurrent2D(grid,
-                                h_init=self.config["flow"]["h_init"],
-                                Ch_w=self.config["flow"]["Ch_w"],
-                                h_w=self.config["flow"]["h_w"],
-                                alpha=self.config["flow"]["alpha"],
+                                h_init=self.run_multi_config["model_param"]["h_init"],
+                                Ch_w=self.run_multi_config["model_param"]["Ch_w"],
+                                h_w=self.run_multi_config["model_param"]["h_w"],
+                                alpha=self.run_multi_config["model_param"]["alpha"],
                                 Cf=cf_ini,
-                                g=self.config["flow"]["g"],
-                                R=self.config["flow"]["R"],
-                                Ds=self.config["flow"]["Ds"],
-                                lambda_p=self.config["flow"]["lambda_p"],
+                                g=self.run_multi_config["model_param"]["g"],
+                                R=self.run_multi_config["model_param"]["R"],
+                                Ds=self.run_multi_config["model_param"]["Ds"],
+                                lambda_p=self.run_multi_config["model_param"]["lambda_p"],
                                 r0=r0_ini,
-                                nu=self.config["flow"]["nu"],
-                                kappa=self.config["flow"]["kappa"],
-                                nu_a=self.config["flow"]["nu_a"],
-                                implicit_num=self.config["flow"]["implicit_num"],
-                                implicit_threshold=self.config["flow"]["implicit_threshold"],
-                                C_init=self.config["flow"]["C_init"],
-                                gamma=self.config["flow"]["gamma"],
-                                la=self.config["flow"]["la"],
-                                water_entrainment=self.config["flow"]["water_entrainment"],
-                                suspension=self.config["flow"]["suspension"],
-                                sed_entrainment_func=self.config["flow"]["sed_entrainment_func"],
-                                no_erosion=self.config["flow"]["no_erosion"],
-                                salt = self.config["flow"]["salt"],
-                                model=self.config["flow"]["model"],
+                                nu=self.run_multi_config["model_param"]["nu"],
+                                kappa=self.run_multi_config["model_param"]["kappa"],
+                                nu_a=self.run_multi_config["model_param"]["nu_a"],
+                                implicit_num=self.run_multi_config["model_param"]["implicit_num"],
+                                implicit_threshold=self.run_multi_config["model_param"]["implicit_threshold"],
+                                C_init=self.run_multi_config["model_param"]["C_init"],
+                                gamma=self.run_multi_config["model_param"]["gamma"],
+                                la=self.run_multi_config["model_param"]["la"],
+                                water_entrainment=self.run_multi_config["model_param"]["water_entrainment"],
+                                suspension=self.run_multi_config["model_param"]["suspension"],
+                                sed_entrainment_func=self.run_multi_config["model_param"]["sed_entrainment_func"],
+                                no_erosion=self.run_multi_config["model_param"]["no_erosion"],
+                                salt = self.run_multi_config["model_param"]["salt"],
+                                model=self.run_multi_config["model_param"]["model"],
                                 alpha_4eq = alpha4eq_ini,
                                 p_gp1991=p_gp1991
                                 )
