@@ -854,7 +854,7 @@ def adjust_negative_values(
         )
         to_fix = core[out_f[core] < 0]
         f_temp[:] = out_f[:]
-
+        counter += 1
     if counter == loop:
         out_f[out_f < 0] = 0
     #     print("Forester filter failed to fix negative values")
