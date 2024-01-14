@@ -281,3 +281,16 @@ def create_topography_from_geotiff(
     grid.at_node["topographic__elevation"][grid.nodes] = topo_data
 
     return grid
+
+def create_topography_from_npy(filename, spacing):
+    ds = np.load(filename)
+    topo_data = np.rot90(ds, 1)
+    grid = RasterModelGrid(topo_data.shape, xy_spacing=[spacing, spacing])
+    grid.add_zeros("flow__depth", at="node")
+    grid.add_zeros("topographic__elevation", at="node")
+    grid.add_zeros("flow__horizontal_velocity", at="link")
+    grid.add_zeros("flow__vertical_velocity", at="link")
+    grid.add_zeros("bed__thickness", at="node")
+    grid.at_node["topographic__elevation"][grid.nodes] = topo_data
+
+    return grid
