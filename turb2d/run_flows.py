@@ -2,7 +2,7 @@ import os
 os.environ['MKL_NUM_THREADS'] = '1'
 os.environ['OMP_NUM_THREADS'] = '1'
 from turb2d import TurbidityCurrent2D
-from turb2d.utils import create_topography, create_init_flow_region
+from turb2d.utils import create_topography, create_init_flow_region, create_topography_from_npy
 import numpy as np
 from contextlib import contextmanager
 import signal
@@ -72,7 +72,7 @@ class RunMultiFlows():
             r0min, r0max = [run_multi_config["multi_param"]['r0min'], run_multi_config["multi_param"]['r0max']]
             pmin, pmax = [run_multi_config["multi_param"]['pmin'], run_multi_config["multi_param"]['pmax']]
             
-            C_total = np.random.uniform(C_total_min, C_total_max, num_runs)
+            C_total = np.random.uniform(C_total_min, C_total_max, run_multi_config["multi_param"]['num_runs'])
             if len(run_multi_config["model_param"]['Ds']) == 1:
                 C_ini = C_total
             elif len(run_multi_config["model_param"]['Ds'])>=2:
@@ -81,7 +81,7 @@ class RunMultiFlows():
                     frac_conc = np.random.rand(num_runs, run_multi_config["multi_param"]['grain_class_num']-1)
                     frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
                     c_i = frac_conc_norm*C_total.reshape(-1, 1)
-                    salt = np.array([np.random.uniform(saltmin, saltmax, num_runs)])
+                    salt = np.array([np.random.uniform(saltmin, saltmax, run_multi_config["multi_param"]['num_runs'])])
                     salt = salt.reshape((run_multi_config["multi_param"]["num_runs"], 1))
                     C_ini = np.append(c_i, salt, axis=1)
 
@@ -243,10 +243,13 @@ class RunMultiFlows():
         return tc
 
     def produce_continuous_flow(self, C_ini, U_ini, h_ini, cf_ini, alpha4eq_ini, r0_ini, p_gp1991):
-
-        grid = create_topography(
-            config_file=self.run_multi_config_file
-        )
+        if self.run_multi_config['grid_param']['gridfile'] is None:
+            grid = create_topography(
+                config_file=self.run_multi_config_file
+            )
+        else:
+            grid = create_topography_from_npy(filename=self.run_multi_config['grid_param']['gridfile'], 
+                                              spacing=self.run_multi_config['grid_param']['spacing'])
         
         grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
         grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
