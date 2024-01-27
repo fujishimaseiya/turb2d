@@ -37,7 +37,7 @@ def get_ew(U, Ch, R, g, umin=0.01, out=None):
     Ri = np.zeros(U.shape)
     flowing = np.where(U > umin)
     Ri[flowing] = R * g * Ch[flowing] / U[flowing] ** 2
-    out = 0.075 / np.sqrt(1 + 718.0 + Ri ** 2.4)  # Parker et al. (1987)
+    out = 0.075 / np.sqrt(1 + 718.0*Ri ** 2.4)  # Parker et al. (1987)
 
     return out
 
