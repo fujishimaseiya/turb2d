@@ -664,7 +664,7 @@ class TurbidityCurrent2D(Component):
         # water and sediment entrainment rates
         self.ew_node = np.zeros(grid.number_of_nodes)
         self.ew_link = np.zeros(grid.number_of_links)
-        self.es = np.zeros(grid.number_of_nodes)
+        self.es = np.zeros_like(self.bed_thick_i)
 
         # diffusion coefficient of velocity
         self.nu_t = np.zeros(grid.number_of_links)
@@ -720,7 +720,6 @@ class TurbidityCurrent2D(Component):
         self.bed_thick_i_temp = self.bed_thick_i.copy()
         self.S = grid.calc_grad_at_link(self.eta)
         self.bed_change_i = np.empty_like(self.bed_thick_i)
-        self.es = np.empty_like(self.bed_thick_i)
 
         # length of flow velocity vector
         self.U_temp = self.U.copy()
