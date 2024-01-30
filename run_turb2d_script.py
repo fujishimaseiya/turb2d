@@ -30,10 +30,11 @@ h_ini = 0.2
 U_ini = 0.2
 
 # set inlet
-inlet = np.where((grid.x_of_node > 0.715)
-                        & (grid.x_of_node < 1.185) & (grid.y_of_node > 4.35))
-inlet_link = np.where((grid.midpoint_of_link[:,0] > 0.715) & (grid.midpoint_of_link[:,0] < 1.185)
-                        & (grid.midpoint_of_link[:,1] > 4.35))
+inlet = np.where((grid.x_of_node >= 0.63)
+                        & (grid.x_of_node <= 1.27) & (grid.y_of_node >= 4.35))
+inlet_link = np.where((grid.midpoint_of_link[:,0] >= 0.63) & (grid.midpoint_of_link[:,0] <= 1.27)
+                        & (grid.midpoint_of_link[:,1] >= 4.35))
+grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
 
 # check number of grain size classes
 if type(C_ini) is float or type(C_ini) is np.float64:
