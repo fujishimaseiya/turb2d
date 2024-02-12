@@ -61,6 +61,7 @@ class RunMultiFlows():
 
             num_runs = run_multi_config["multi_param"]["num_runs"]
             C_total_min, C_total_max = [run_multi_config["multi_param"]["C_total_min"], run_multi_config["multi_param"]["C_total_max"]]
+            Cmin, Cmax = [run_multi_config["multi_param"]["Cmin"], run_multi_config["multi_param"]["Cmax"]]
             saltmin, saltmax = [run_multi_config["multi_param"]["saltmin"], run_multi_config["multi_param"]["saltmax"]]
             Umin, Umax = [run_multi_config["multi_param"]["Umin"], run_multi_config["multi_param"]["Umax"]]
             hmin, hmax = [run_multi_config["multi_param"]["hmin"], run_multi_config["multi_param"]["hmax"]]
@@ -72,24 +73,48 @@ class RunMultiFlows():
             r0min, r0max = [run_multi_config["multi_param"]['r0min'], run_multi_config["multi_param"]['r0max']]
             pmin, pmax = [run_multi_config["multi_param"]['pmin'], run_multi_config["multi_param"]['pmax']]
             
-            C_total = np.random.uniform(C_total_min, C_total_max, run_multi_config["multi_param"]['num_runs'])
+            pdb.set_trace()
             if len(run_multi_config["model_param"]['Ds']) == 1:
+                C_total = np.random.uniform(C_total_min, C_total_max, (run_multi_config["multi_param"]['num_runs'], run_multi_config["multi_param"]['grain_class_num']))
                 C_ini = C_total
+                
             elif len(run_multi_config["model_param"]['Ds'])>=2:
-                C_ini = []
-                if run_multi_config["model_param"]["salt"] is True:
-                    frac_conc = np.random.rand(num_runs, run_multi_config["multi_param"]['grain_class_num']-1)
-                    frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
-                    c_i = frac_conc_norm*C_total.reshape(-1, 1)
-                    salt = np.array([np.random.uniform(saltmin, saltmax, run_multi_config["multi_param"]['num_runs'])])
-                    salt = salt.reshape((run_multi_config["multi_param"]["num_runs"], 1))
-                    C_ini = np.append(c_i, salt, axis=1)
+                if C_total_min is None and C_total_max is None:
+                    if run_multi_config["model_param"]["salt"] is True:
+                        c_i = np.random.uniform(Cmin, Cmax, (run_multi_config["multi_param"]["num_runs"], run_multi_config["multi_param"]['grain_class_num']-1))
+                        salt = np.array([np.random.uniform(saltmin, saltmax, run_multi_config["multi_param"]['num_runs'])])
+                        salt = salt.reshape((run_multi_config["multi_param"]["num_runs"], 1))
+                        C_ini = np.append(c_i, salt, axis=1)
 
-                elif run_multi_config["model_param"]["salt"] is False:
-                    frac_conc = np.random.rand(num_runs, run_multi_config["model_param"]['Ds'])
-                    frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
-                    c_i = frac_conc_norm*C_total
-                    C_ini = c_i
+                    elif run_multi_config["model_param"]["salt"] is False:
+                        c_i = np.random.uniform(Cmin, Cmax, (run_multi_config["multi_param"]["num_runs"], run_multi_config["multi_param"]['grain_class_num']))
+                        C_ini = c_i
+                    
+                    else:
+                        raise ValueError("Bool values should be enterd in run_multi_config[model_param][salt]")
+
+                elif C_total_min is not None and C_total_max is not None:
+                    C_ini = []
+                    C_total = np.random.rand(run_multi_config["multi_param"]["num_runs"])
+                    if run_multi_config["model_param"]["salt"] is True:
+                        frac_conc = np.random.rand(num_runs, run_multi_config["multi_param"]['grain_class_num']-1)
+                        frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
+                        c_i = frac_conc_norm*C_total.reshape(-1, 1)
+                        salt = np.array([np.random.uniform(saltmin, saltmax, run_multi_config["multi_param"]['num_runs'])])
+                        salt = salt.reshape((run_multi_config["multi_param"]["num_runs"], 1))
+                        C_ini = np.append(c_i, salt, axis=1)
+                    
+                    elif run_multi_config["model_param"]["salt"] is False:
+                        frac_conc = np.random.rand(num_runs, run_multi_config["multi_param"]['grain_class_num'])
+                        frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
+                        c_i = frac_conc_norm*C_total.reshape(-1, 1)
+                        C_ini = c_i
+                    else:
+                        raise ValueError("Bool values should be enterd in run_multi_config[model_param][salt]")
+                else:
+                    raise ValueError("Invalid value is enterd in C_total_min, C_total_max, Cmin or Cmax")
+            else:
+                raise ValueError("Invalid value is entered in run_multi_config[model_param][Ds]")
             # np.savetxt(os.path.join(dirpath, 'C_ini.csv'), C_ini, delimiter=',')
             if hmin == hmax:
                 h_ini = np.full(num_runs, hmin)

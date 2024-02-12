@@ -4,8 +4,10 @@ multi_param:
   num_runs: 1
   processors: 1
   grain_class_num: 5
-  C_total_min: 0.0001
-  C_total_max: 0.005
+  C_total_min: #0.0001
+  C_total_max: #0.005
+  Cmin: 0.00001
+  Cmax: 0.005
   Umin: 0.01
   Umax: 0.3
   hmin: 0.01
