@@ -73,7 +73,6 @@ class RunMultiFlows():
             r0min, r0max = [run_multi_config["multi_param"]['r0min'], run_multi_config["multi_param"]['r0max']]
             pmin, pmax = [run_multi_config["multi_param"]['pmin'], run_multi_config["multi_param"]['pmax']]
             
-            pdb.set_trace()
             if len(run_multi_config["model_param"]['Ds']) == 1:
                 C_total = np.random.uniform(C_total_min, C_total_max, (run_multi_config["multi_param"]['num_runs'], run_multi_config["multi_param"]['grain_class_num']))
                 C_ini = C_total
@@ -510,7 +509,6 @@ class RunMultiFlows():
             dfile.close()
 
         elif self.flow_type == 'continuous':
-            # pdb.set_trace()
             run_id = init_values[0]
             C_ini_i = init_values[1]
             U_ini_i = init_values[2]
