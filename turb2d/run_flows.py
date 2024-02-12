@@ -497,7 +497,6 @@ class RunMultiFlows():
             alpha4eq_i = init_values[6]
             r0_i = init_values[7]
             p_gp1991_i = init_values[8]
-            print(init_values[8])
 
             dfile = netCDF4.Dataset(self.filename, 'a', share=True)
             C_ini = dfile.variables['C_ini']
