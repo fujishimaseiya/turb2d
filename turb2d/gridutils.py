@@ -813,6 +813,110 @@ def find_boundary_links_nodes(tc):
         ]
     )
 
+    if tc.flow_type == "continuous":
+        # import pdb
+        # pdb.set_trace()
+        # get indices of fixed value nodes including inlet nodes
+        fixed_value_nodes_with_inlet = np.squeeze(np.where(grid.status_at_node==1))
+        # get indices of nodes at edges
+        edge_nodes = np.concatenate(
+            [tc.grid.nodes_at_top_edge, 
+             tc.grid.nodes_at_bottom_edge, 
+             tc.grid.nodes_at_right_edge, 
+             tc.grid.nodes_at_left_edge]
+             )
+        # get indices of fixed value nodes at inlet without edge nodes
+        fixed_value_nodes_at_inlet = np.setdiff1d(fixed_value_nodes_with_inlet, edge_nodes)
+
+        # order array saved indices of nodes at inlet
+        # array reshaped to shape of inlet
+        inlet_ind_list = []
+        row = []
+        for ind in fixed_value_nodes_at_inlet:
+            if not row or ind == row[-1] + 1:
+                row.append(ind)
+            else:
+                inlet_ind_list.append(np.array(row))
+                row = [ind]
+
+        if row:
+            inlet_ind_list.append(np.array(row))
+        
+        inlet_ind_arr = np.array(inlet_ind_list)
+
+        # append inlet_ind_arr to core_nodes
+        # tc.core_nodes = np.append(tc.core_nodes, inlet_ind_arr)
+        
+        # get indices of nodes of inlet edge
+        east_edge_at_inlet = inlet_ind_arr[:, 0]
+        west_edge_at_inlet = inlet_ind_arr[:, -1]
+        north_edge_at_inlet = inlet_ind_arr[0, :]
+
+        # array have indices of inlet edge nodes without topedge
+        fixed_value_nodes_at_inletedge = np.concatenate(
+            [north_edge_at_inlet,
+             east_edge_at_inlet,
+             west_edge_at_inlet]
+            )
+
+        tc.fixed_value_nodes = np.concatenate(
+            [tc.fixed_value_nodes,
+             fixed_value_nodes_at_inletedge]
+            )
+
+        # get indices of nodes connected to inlet edge nodes
+        fixed_value_anchor_nodes_at_north_at_inlet_edge = tc.node_north[north_edge_at_inlet]
+        fixed_value_anchor_nodes_at_east_at_inletedge = tc.node_east[east_edge_at_inlet]
+        fixed_value_anchor_nodes_at_west_at_inletedge = tc.node_west[west_edge_at_inlet]
+
+        fixed_value_anchor_nodes_at_inlet = np.concatenate(
+            [fixed_value_anchor_nodes_at_north_at_inlet_edge,
+             fixed_value_anchor_nodes_at_east_at_inletedge,
+             fixed_value_anchor_nodes_at_west_at_inletedge]
+            )
+        
+        tc.fixed_value_anchor_nodes = np.concatenate(
+            [tc.fixed_value_anchor_nodes,
+             fixed_value_anchor_nodes_at_inlet]
+            )
+
+        # get indices of link connected to inlet edge nodes without topedge
+        fixed_value_links_at_north_at_inletedge = tc.south_link_at_node[north_edge_at_inlet]
+        fixed_value_links_at_east_at_inletedge = tc.east_link_at_node[east_edge_at_inlet]
+        fixed_value_links_at_west_at_inletedge = tc.west_link_at_node[west_edge_at_inlet]
+        
+        fixed_value_links_at_inletedge = np.concatenate(
+            [fixed_value_links_at_north_at_inletedge,
+             fixed_value_links_at_east_at_inletedge,
+             fixed_value_links_at_west_at_inletedge]
+            )
+
+        tc.fixed_value_links = np.concatenate(
+            [tc.fixed_value_links,
+             fixed_value_links_at_inletedge]
+            )
+        
+        # get indices of anchor link connected to fixed value links at inlet edge
+        fixed_value_anchor_links_at_north_inletedge = tc.link_south[fixed_value_links_at_north_at_inletedge]
+        fixed_value_anchor_links_at_east_inletedge = tc.link_east[fixed_value_links_at_east_at_inletedge]
+        fixed_value_anchor_links_at_west_inletedge = tc.link_west[fixed_value_links_at_west_at_inletedge]
+
+        fixed_value_anchor_links_at_inletedge = np.concatenate(
+            [fixed_value_anchor_links_at_north_inletedge,
+             fixed_value_anchor_links_at_east_inletedge,
+             fixed_value_anchor_links_at_west_inletedge]
+            )
+
+        tc.fixed_value_anchor_links = np.concatenate(
+            [tc.fixed_value_anchor_links,
+             fixed_value_anchor_links_at_inletedge]
+            )
+        
+    elif tc.flow_type == "surge":
+        pass
+
+    else:
+        raise TypeError("Select flow type from surge or continuous.")
 
 def adjust_negative_values(
     f, core, east_id, west_id, north_id, south_id, out_f=None, loop=1000,

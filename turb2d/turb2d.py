@@ -96,7 +96,9 @@ class TurbidityCurrent2D(Component):
         "bed__active_layer_fraction_i": "1",
         "deriviation_of_bed__active_layer_fraction_i": "1",
         "bed__sediment_volume_per_unit_area_i": "m",
-        "der__flow__sediment_concentration_i": "1"
+        "der__flow__sediment_concentration_i": "1",
+        "Ch": "1", 
+        "composite_velocity": "m/s"
     }
 
     _var_mapping = {
@@ -161,6 +163,7 @@ class TurbidityCurrent2D(Component):
         model="3eq",
         alpha_4eq = 0.1,
         p_gp1991 = 0.1,
+        flow_type = "surge",
         **kwds
     ):
         """Create a component of turbidity current
@@ -265,6 +268,7 @@ class TurbidityCurrent2D(Component):
                 self.p_gp1991 = p_gp1991
             else:
                 self.p_gp1991 = None
+            self.flow_type = flow_type
         else:
             with open(config_path) as yml:
                 config = yaml.safe_load(yml)
@@ -305,6 +309,7 @@ class TurbidityCurrent2D(Component):
                 self.p_gp1991 = config['model_param']['p']
             else:
                 self.p_gp1991 = None
+            self.flow_type = config['model_param']['flow_type']
 
         # Now setting up fields at nodes and links
         try:
@@ -436,6 +441,16 @@ class TurbidityCurrent2D(Component):
                 self.Ch_i[i, :] = self.C_i[i, :] * self.h
             self.C = np.sum(self.C_i, axis=0)
             self.Ch = np.sum(self.Ch_i, axis=0)
+            self.Ch_nodes = self.Ch
+
+        try:
+            self.Ch_nodes = grid.add_zeros(
+                "Ch",
+                at="node",
+                units=self._var_units["Ch"],
+            )
+        except FieldError:
+            self.Ch_nodes = self.C*self.h
 
         try:
             self.der_Ch_i = np.empty([self.number_gclass, grid.number_of_nodes])
@@ -502,6 +517,14 @@ class TurbidityCurrent2D(Component):
         except FieldError:
             self.u_node = grid.at_node["flow__horizontal_velocity_at_node"]
             self.v_node = grid.at_node["flow__vertical_velocity_at_node"]
+
+        try:
+            self.U_nodes = grid.add_zeros(
+                "composite_velocity", at="node", units=self._var_units["composite_velocity"]
+            )
+        
+        except FieldError:
+            self.U_nodes = grid.at_node["composite_velocity"]
 
         try:
             self.es_i = np.empty([self.number_gclass, grid.number_of_nodes])
@@ -583,13 +606,13 @@ class TurbidityCurrent2D(Component):
             self.dKhdx = grid.at_link["flow_TKE__horizontal_gradient"]
             self.dKhdy = grid.at_link["flow_TKE__vertical_gradient"]
 
-        # try:
-        #     self.Fr = grid.add_zeros(
-        #         "Froude_number", at="link"
-        #     )
+        try:
+            self.Ri = grid.add_zeros(
+                "Richardson_number", at="node"
+            )
         
-        # except FieldError:
-        #     self.Fr = grid.at_link["Froude_number"]
+        except FieldError:
+            self.Ri = grid.at_node["Richardson_number"]
 
         try:
             self.flow_power = np.empty(
@@ -803,6 +826,10 @@ class TurbidityCurrent2D(Component):
         self.prev_prev_der_Ch_i = self.der_Ch_i.copy()
         self.prev_der_Ch_i = self.der_Ch_i.copy()
         self.prev_out_Ch_i = self.Ch_i.copy()
+
+        # set deriviation for calculation of fluid mass conservation
+        self.der_h = self.h.copy()
+        self.prev_der_h = self.h.copy()
 
         # Start time of simulation is at 0 s
         grid.at_grid["time__elapsed"] = 0.0
@@ -1031,6 +1058,9 @@ class TurbidityCurrent2D(Component):
         self.bed_thick[self.grid.nodes_at_left_edge] = 0.0
         self.bed_thick[self.grid.nodes_at_right_edge] = 0.0
         self.bed_thick[self.grid.nodes_at_bottom_edge] = 0.0
+        self.Ri[self.wet_nodes] = (self.R*self.g*self.C[self.wet_nodes]*self.h[self.wet_nodes])/self.U_node[self.wet_nodes]**2
+        self.Ch_nodes[:] = self.Ch[:]
+        self.U_nodes[:] = self.U_node[:]
         # self.bed_thick[self.grid.nodes_at_right_edge] = 0.0
         # self.bed_thick[self.grid.nodes_at_left_edge] = 0.0
         # self.bed_thick[self.grid.nodes_at_bottom_edge] = 0.0
@@ -1311,7 +1341,7 @@ class TurbidityCurrent2D(Component):
 
         # calculate water entrainment coefficients
         if self.water_entrainment is True:
-            self.ew_link[self.wet_horizontal_links] = get_ew(
+            self.ew_link[self.wet_horizontal_links]= get_ew(
                 self.U[self.wet_horizontal_links],
                 self.Ch_link[self.wet_horizontal_links],
                 self.R,
@@ -1386,7 +1416,38 @@ class TurbidityCurrent2D(Component):
         # remove negative values
         self._remove_abnormal_values()
 
-        self.h_temp[self.wet_pwet_nodes] /= 1 + self.div[wet_pwet_nodes] * dt
+        # 2-step adams bashforth
+        # semi-implicit euler method is used at first step
+        # if self.local_elapsed_time == 0.0 and self.repeat == 0 and self.last == 1:
+        #     self.der_h[wet_pwet_nodes] = -self.h_temp[wet_pwet_nodes]*self.div[wet_pwet_nodes]
+        #     self.h_temp[wet_pwet_nodes] /= 1 + self.div[wet_pwet_nodes] * dt
+        #     if self.water_entrainment is True:
+        #         self.h_temp[self.wet_nodes] += ((self.dt_local*self.ew_node[self.wet_nodes]*self.U_node[self.wet_nodes]) / (1 + self.div[self.wet_nodes]*self.dt_local))
+        #         # self.h_temp[wet_pwet_nodes] += self.dt_local*self.ew_node[self.wet_pwet_nodes]*self.U_node[self.wet_pwet_nodes]
+        #         self.der_h[wet_pwet_nodes] += self.ew_node[wet_pwet_nodes]*self.U_nodes[wet_pwet_nodes]
+                
+        # else:
+        #     self.prev_der_h[~wet_pwet_nodes]=0.0
+        #     self.prev_der_h[wet_pwet_nodes] = self.der_h[wet_pwet_nodes].copy()
+        #     self.der_h[~wet_pwet_nodes] = 0.0
+        #     self.der_h[wet_pwet_nodes] = -self.h_temp[wet_pwet_nodes]*self.div[wet_pwet_nodes]
+        #     if self.water_entrainment is True:
+        #         self.der_h[self.wet_nodes] += self.ew_node[self.wet_nodes]*self.U_nodes[self.wet_nodes]
+            
+        #     self.h_temp[wet_pwet_nodes] += 0.5*dt*(self.prev_der_h[wet_pwet_nodes] + 3*self.der_h[wet_pwet_nodes])
+
+        # Heun method
+        # predictor (semi-implicit euler)
+        # h_pred /= 1 + self.div[wet_pwet_nodes] * dt
+        # if self.water_entrainment is True:
+        #     h_pred += ((self.dt_local*self.ew_node[self.wet_pwet_nodes]*self.U_node[self.wet_pwet_nodes]) / (1 + self.div[self.wet_pwet_nodes]*self.dt_local))
+        # der_h_pred = -h_pred*self.div
+        # if self.water_entrainment is True:
+        #     der_h_temp += self.ew_node[self.wet_pwet_nodes]*self.U_nodes[self.wet_pwet_nodes]
+
+        # h_predictor = self.h_temp[wet_pwet_nodes] + dt*der_h_temp
+        # self.h_temp[wet_pwet_nodes] = h_predictor + 0.5*dt*(self.h_temp[wet_pwet_nodes] + h_predictor)
+        self.h_temp[wet_pwet_nodes] /= 1 + self.div[wet_pwet_nodes] * dt
         self.Ch_i_temp[:, self.wet_pwet_nodes] /= 1 + \
             self.div[wet_pwet_nodes] * dt
 
@@ -1397,6 +1458,8 @@ class TurbidityCurrent2D(Component):
                 * self.U_node[self.wet_nodes]
                 * self.dt_local
             )
+            # pdb.set_trace()
+            # self.h_temp[self.wet_pwet_nodes] += ((self.dt_local*self.ew_node[self.wet_pwet_nodes]*self.U_node[self.wet_pwet_nodes]) / (1 + self.div[self.wet_pwet_nodes]*self.dt_local))
 
         # map nodes to links
         map_nodes_to_links(
@@ -2560,7 +2623,10 @@ class TurbidityCurrent2D(Component):
             "flow__vertical_velocity_at_node",
             "flow__surface_elevation",
             "flow__sediment_concentration_total",
-            "bed__thickness"
+            "bed__thickness", 
+            "Richardson_number",
+            "Ch",
+            "composite_velocity"
         ]
         # add sediment concentration of each grain size class
         variable_names.extend(
@@ -2639,6 +2705,9 @@ class TurbidityCurrent2D(Component):
     ):
         """Update boundary conditions
         """
+
+        # edge nodes at fixed value edge
+
         edge_nodes = self.grid.nodes_at_link[self.fixed_value_edge_links]
 
         if h is not None:
@@ -2655,6 +2724,7 @@ class TurbidityCurrent2D(Component):
             u[self.fixed_grad_links] = u[self.fixed_grad_anchor_links]
             u[self.fixed_grad_link_at_east[u[self.fixed_grad_link_at_east] < 0]] = 0
             u[self.fixed_grad_link_at_west[u[self.fixed_grad_link_at_west] > 0]] = 0
+            # なんで1/3と2/3?
             u[self.fixed_value_links] = (2.0 / 3.0) * u_node[self.fixed_value_nodes] + (
                 1.0 / 3.0
             ) * u[self.fixed_value_anchor_links]
