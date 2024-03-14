@@ -1453,11 +1453,23 @@ class TurbidityCurrent2D(Component):
 
         # calculate flow expansion by water entrainment
         if self.water_entrainment is True:
-            self.h_temp[self.wet_nodes] += (
-                self.ew_node[self.wet_nodes]
-                * self.U_node[self.wet_nodes]
-                * self.dt_local
-            )
+            # pdb.set_trace()
+            if self.salt is True:
+                self.h_temp[self.wet_nodes] += ((
+                    self.ew_node[self.wet_nodes]
+                    * self.U_node[self.wet_nodes]
+                    - 3.05*np.mean(self.ws[:-1]))
+                    * self.dt_local
+                )
+            elif self.salt is False:
+                self.h_temp[self.wet_nodes] += ((
+                    self.ew_node[self.wet_nodes]
+                    * self.U_node[self.wet_nodes]
+                    - 3.05*np.mean(self.ws))
+                    * self.dt_local
+                )
+            else:
+                raise TypeError('self.salt should be boolean type.')
             # pdb.set_trace()
             # self.h_temp[self.wet_pwet_nodes] += ((self.dt_local*self.ew_node[self.wet_pwet_nodes]*self.U_node[self.wet_pwet_nodes]) / (1 + self.div[self.wet_pwet_nodes]*self.dt_local))
 
