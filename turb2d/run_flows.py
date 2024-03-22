@@ -281,10 +281,13 @@ class RunMultiFlows():
         grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
         
         # set inlet
-        inlet = np.where((grid.x_of_node >= 0.63)
-                        & (grid.x_of_node <= 1.27) & (grid.y_of_node >= 4.35))
-        inlet_link = np.where((grid.midpoint_of_link[:,0] >= 0.63) & (grid.midpoint_of_link[:,0] <= 1.27)
-                                & (grid.midpoint_of_link[:,1] >= 4.35))
+        inlet_edge = [(self.run_multi_config['grid_param']['flume_width'] - self.run_multi_config['grid_param']['inlet_width']) / 2.0, 
+                      (self.run_multi_config['grid_param']['flume_width'] + self.run_multi_config['grid_param']['inlet_width']) / 2.0]
+
+        inlet = np.where((grid.x_of_node >= inlet_edge[0])
+                                & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == self.run_multi_config['grid_param']['flume_length']))
+        inlet_link = np.where((grid.midpoint_of_link[:,0] >= inlet_edge[0]) & (grid.midpoint_of_link[:,0] <= inlet_edge[1])
+                                & (grid.midpoint_of_link[:,1] == self.run_multi_config['grid_param']['flume_length']))
         grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
 
         # check number of grain size classes

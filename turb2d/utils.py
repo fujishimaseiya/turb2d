@@ -83,8 +83,8 @@ def create_topography(
     if os.path.exists(config_file):
         with open(config_file) as yml:
             config = yaml.safe_load(yml)
-        length=config['grid_param']['length']
-        width=config['grid_param']['width']
+        length=config['grid_param']['flume_length']
+        width=config['grid_param']['flume_width']
         spacing=config['grid_param']['spacing']
         slope_outside=config['grid_param']['slope_outside']
         slope_inside=config['grid_param']['slope_inside']
