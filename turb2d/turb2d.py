@@ -2262,27 +2262,27 @@ class TurbidityCurrent2D(Component):
         # Settling is solved explicitly, and entrainment is
         # solved semi-implicitly
         
-        # out_Ch_i[:, nodes] = (
-        #     Ch_i[:, nodes]
-        #     + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt
-        # )
-        # out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
+        out_Ch_i[:, nodes] = (
+            Ch_i[:, nodes]
+            + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt
+        )
+        out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
 
         # # 3-order adams-bashforth method
         # pdb.set_trace()
-        if self.local_elapsed_time == 0.0 and self.repeat == 0 and self.last == 1:
-            self.der_Ch_i[:, nodes] = ws*(self.bed_active_layer[:, nodes]*self.es[:, nodes] - r0*Ch_i[:, nodes]/h[nodes])
-            out_Ch_i[:, nodes] = (Ch_i[:, nodes] + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt)
-            out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
+        # if self.local_elapsed_time == 0.0 and self.repeat == 0 and self.last == 1:
+        #     self.der_Ch_i[:, nodes] = ws*(self.bed_active_layer[:, nodes]*self.es[:, nodes] - r0*Ch_i[:, nodes]/h[nodes])
+        #     out_Ch_i[:, nodes] = (Ch_i[:, nodes] + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt)
+        #     out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
             
-        else:
-            self.prev_prev_der_Ch_i[:, ~nodes] = 0.
-            self.prev_prev_der_Ch_i[:, nodes] = self.prev_der_Ch_i[:, nodes].copy()
-            self.prev_der_Ch_i[:, ~nodes] = 0.
-            self.prev_der_Ch_i[:, nodes] = self.der_Ch_i[:, nodes].copy()
-            self.der_Ch_i[:, ~nodes] = 0.
-            self.der_Ch_i[:, nodes] = ws*(self.bed_active_layer[:, nodes]*self.es[:, nodes] - r0*Ch_i[:, nodes]/h[nodes])
-            out_Ch_i[:, nodes] = Ch_i[:, nodes] + 1/12*(23*self.der_Ch_i[:, nodes] - 16*self.prev_der_Ch_i[:, nodes] + 5*self.prev_prev_der_Ch_i[:, nodes])*dt
+        # else:
+        #     self.prev_prev_der_Ch_i[:, ~nodes] = 0.
+        #     self.prev_prev_der_Ch_i[:, nodes] = self.prev_der_Ch_i[:, nodes].copy()
+        #     self.prev_der_Ch_i[:, ~nodes] = 0.
+        #     self.prev_der_Ch_i[:, nodes] = self.der_Ch_i[:, nodes].copy()
+        #     self.der_Ch_i[:, ~nodes] = 0.
+        #     self.der_Ch_i[:, nodes] = ws*(self.bed_active_layer[:, nodes]*self.es[:, nodes] - r0*Ch_i[:, nodes]/h[nodes])
+        #     out_Ch_i[:, nodes] = Ch_i[:, nodes] + 1/12*(23*self.der_Ch_i[:, nodes] - 16*self.prev_der_Ch_i[:, nodes] + 5*self.prev_prev_der_Ch_i[:, nodes])*dt
          
         # Obtain sedimentation rate
         self.bed_change_i[:, nodes] = self.Ch_i_prev[:,
@@ -2314,26 +2314,26 @@ class TurbidityCurrent2D(Component):
         # 3-step adams-bashforth method
         # pdb.set_trace()
         # if first step, active layer is calculated using semi-implicit euler method
-        if self.local_elapsed_time == 0.0 and self.repeat == 0 and self.last == 1:
-            self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
-                - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
-            self.bed_active_layer[:, nodes] += 1 / \
-            self.la * self.bed_change_i[:, nodes]
-            self.bed_active_layer[:, nodes] /= 1 + 1 / self.la * np.sum(
-                self.bed_change_i[:, nodes], axis=0
-            )
+        # if self.local_elapsed_time == 0.0 and self.repeat == 0 and self.last == 1:
+        #     self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
+        #         - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
+        #     self.bed_active_layer[:, nodes] += 1 / \
+        #     self.la * self.bed_change_i[:, nodes]
+        #     self.bed_active_layer[:, nodes] /= 1 + 1 / self.la * np.sum(
+        #         self.bed_change_i[:, nodes], axis=0
+        #     )
             
-        else:
-            # initialize array for deriviation
-            self.prev_prev_der_active_layer[:, ~nodes] = 0.
-            self.prev_prev_der_active_layer[:, nodes] = self.prev_der_active_layer[:, nodes].copy()
-            self.prev_der_active_layer[:, ~nodes] = 0.
-            self.prev_der_active_layer[:, nodes] = self.der_bed_active_layer[:, nodes].copy()
-            self.der_bed_active_layer[:, ~nodes] = 0.
-            if self.no_erosion is True:
-                # calculate deriviation of active layer
-                self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
-                    - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
+        # else:
+        #     # initialize array for deriviation
+        #     self.prev_prev_der_active_layer[:, ~nodes] = 0.
+        #     self.prev_prev_der_active_layer[:, nodes] = self.prev_der_active_layer[:, nodes].copy()
+        #     self.prev_der_active_layer[:, ~nodes] = 0.
+        #     self.prev_der_active_layer[:, nodes] = self.der_bed_active_layer[:, nodes].copy()
+        #     self.der_bed_active_layer[:, ~nodes] = 0.
+        #     if self.no_erosion is True:
+        #         # calculate deriviation of active layer
+        #         self.der_bed_active_layer[:, nodes] = 1/self.la*(ws/(1-self.lambda_p)*(r0*out_Ch_i[:, nodes]/h[nodes]-self.bed_active_layer[:, nodes]*self.es[:, nodes]) \
+        #             - self.bed_active_layer[:, nodes] * np.sum(self.bed_change_i[:, nodes],axis=0))
                 
             # elif self.no_erosion is False:
             #     # check eroded region
@@ -2359,8 +2359,8 @@ class TurbidityCurrent2D(Component):
             #         *(r0*out_Ch_i[:, nodes[~eroded_region[i, :]]]/h[nodes[~eroded_region[i, :]]]-self.bed_active_layer[:, nodes[~eroded_region[i, :]]]*self.es[:, nodes[~eroded_region[i, :]]]) \
             #         - self.bed_active_layer[:, nodes[~eroded_region[i, :]]] * np.sum(self.bed_change_i[:, nodes[~eroded_region[i, :]]],axis=0))
             # calculate bed active layer of next time step
-            self.bed_active_layer[:, nodes] = self.bed_active_layer[:, nodes] + \
-                1/12*(23*self.der_bed_active_layer[:, nodes] - 16*self.prev_der_active_layer[:, nodes]+ 5 *self.prev_prev_der_active_layer[:, nodes])*dt
+            # self.bed_active_layer[:, nodes] = self.bed_active_layer[:, nodes] + \
+            #     1/12*(23*self.der_bed_active_layer[:, nodes] - 16*self.prev_der_active_layer[:, nodes]+ 5 *self.prev_prev_der_active_layer[:, nodes])*dt
 
         # if no_erosion is false, the sediment is supplied from the substrate to the active layer by the amount of eroded sediment
         # if self.no_erosion is False:
@@ -2382,11 +2382,11 @@ class TurbidityCurrent2D(Component):
 
 
 
-        # self.bed_active_layer[:, nodes] += 1 / \
-        #     self.la * self.bed_change_i[:, nodes]
-        # self.bed_active_layer[:, nodes] /= 1 + 1 / self.la * np.sum(
-        #     self.bed_change_i[:, nodes], axis=0
-        # )  # semi-implicit
+        self.bed_active_layer[:, nodes] += 1 / \
+            self.la * self.bed_change_i[:, nodes]
+        self.bed_active_layer[:, nodes] /= 1 + 1 / self.la * np.sum(
+            self.bed_change_i[:, nodes], axis=0
+        )  # semi-implicit
 
         # Adjust abnormal values in the active layer
         # (self.bed_active_layer[:, nodes])[
