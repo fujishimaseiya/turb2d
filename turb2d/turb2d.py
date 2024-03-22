@@ -310,6 +310,7 @@ class TurbidityCurrent2D(Component):
             else:
                 self.p_gp1991 = None
             self.flow_type = config['model_param']['flow_type']
+            self.config = config
 
         # Now setting up fields at nodes and links
         try:
@@ -1453,23 +1454,33 @@ class TurbidityCurrent2D(Component):
 
         # calculate flow expansion by water entrainment
         if self.water_entrainment is True:
-            # pdb.set_trace()
-            if self.salt is True:
-                self.h_temp[self.wet_nodes] += ((
-                    self.ew_node[self.wet_nodes]
-                    * self.U_node[self.wet_nodes]
-                    - 3.05*np.mean(self.ws[:-1]))
-                    * self.dt_local
-                )
-            elif self.salt is False:
-                self.h_temp[self.wet_nodes] += ((
-                    self.ew_node[self.wet_nodes]
-                    * self.U_node[self.wet_nodes]
-                    - 3.05*np.mean(self.ws))
-                    * self.dt_local
-                )
+            # if there are no wet nodes, water detrainment is set to zero.
+            if self.Ch_i_temp[:, self.wet_nodes].size == 0:
+                de_w = 0.
+            # if there are wet nodes, watet entrainment is calculated at each wet nodes. 
             else:
-                raise TypeError('self.salt should be boolean type.')
+                # calculate fraction of concentration at each grid
+                if self.salt is False:
+                    gsize = np.array(self.config['model_param']['Ds'])
+                    conc_frac = (self.Ch_i_temp[:, self.wet_nodes]/self.h_temp[self.wet_nodes])/np.sum(self.Ch_i_temp[:, self.wet_nodes], axis=1).reshape(-1, 1)
+                elif self.salt is True:
+                    gsize = np.array(self.config['model_param']['Ds'][:-1])
+                    conc_frac = (self.Ch_i_temp[:-1, self.wet_nodes]/self.h_temp[self.wet_nodes])/np.sum(self.Ch_i_temp[:-1, self.wet_nodes], axis=1).reshape(-1, 1)
+                else:
+                    raise TypeError('self.salt should be boolean type.')
+                # calculate weighted mean grain size at each wet grid
+                weighted_mean_gsize = np.mean(gsize.reshape(-1, 1)*conc_frac, axis=0)
+                # coefficient of detrainment rate
+                de_w_coef = 3.05
+                de_w = de_w_coef*get_ws(self.R, self.g, weighted_mean_gsize, self.nu)
+
+            self.h_temp[self.wet_nodes] += ((
+                self.ew_node[self.wet_nodes]
+                * self.U_node[self.wet_nodes]
+                - de_w)
+                * self.dt_local
+            )
+
             # pdb.set_trace()
             # self.h_temp[self.wet_pwet_nodes] += ((self.dt_local*self.ew_node[self.wet_pwet_nodes]*self.U_node[self.wet_pwet_nodes]) / (1 + self.div[self.wet_pwet_nodes]*self.dt_local))
 
