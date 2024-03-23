@@ -1461,15 +1461,15 @@ class TurbidityCurrent2D(Component):
             else:
                 # calculate fraction of concentration at each grid
                 if self.salt is False:
-                    gsize = np.array(self.config['model_param']['Ds'])
+                    gsize = self.Ds
                     conc_frac = (self.Ch_i_temp[:, self.wet_nodes]/self.h_temp[self.wet_nodes])/np.sum(self.Ch_i_temp[:, self.wet_nodes], axis=1).reshape(-1, 1)
                 elif self.salt is True:
-                    gsize = np.array(self.config['model_param']['Ds'][:-1])
+                    gsize = self.Ds[:-1]
                     conc_frac = (self.Ch_i_temp[:-1, self.wet_nodes]/self.h_temp[self.wet_nodes])/np.sum(self.Ch_i_temp[:-1, self.wet_nodes], axis=1).reshape(-1, 1)
                 else:
                     raise TypeError('self.salt should be boolean type.')
                 # calculate weighted mean grain size at each wet grid
-                weighted_mean_gsize = np.mean(gsize.reshape(-1, 1)*conc_frac, axis=0)
+                weighted_mean_gsize = np.mean(gsize*conc_frac, axis=0)
                 # coefficient of detrainment rate
                 de_w_coef = 3.05
                 de_w = de_w_coef*get_ws(self.R, self.g, weighted_mean_gsize, self.nu)
