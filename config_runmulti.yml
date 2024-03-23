@@ -1,8 +1,8 @@
 multi_param:
-  dirpath: ..
+  dirpath: .
   filename: run_3000.nc
-  num_runs: 1
-  processors: 1
+  num_runs: 10
+  processors: 10
   grain_class_num: 5
   C_total_min: #0.0001
   C_total_max: #0.005
@@ -15,7 +15,7 @@ multi_param:
   rmin: # None
   rmax: # None
   endmin: 10
-  endmax: 10
+  endmax: 30
   saltmin: 0.0001
   saltmax: 0.005
   Cfmin: 0.001
@@ -32,7 +32,7 @@ multi_param:
 
 grid_param:
   gridfile: 
-  length: 4.5
+  length: 4.2
   width: 1.9
   spacing: 0.05
   slope_outside: 0.1
@@ -44,6 +44,8 @@ grid_param:
   canyon_half_width: 1.0
   canyon: canyon
   noise: 0.0
+  inlet_width: 0.64
+  inlet_length: 0.3
 
 model_param:
   h_init: 0.0
