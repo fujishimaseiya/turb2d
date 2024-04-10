@@ -6,10 +6,10 @@ from .utils import (
     create_topography,
     create_topography_from_geotiff,
 )
-from .wetdry import find_wet_grids, process_partial_wet_grids
-from .sediment_func import get_es, get_ew, get_ws
-from .cip import update_gradient, update_gradient2
-from .cip import CIP2D, Jameson, SOR
+from wetdry import find_wet_grids, process_partial_wet_grids
+from .sediment_func import get_es, get_ew, get_ws, get_det_rate
+from cip import update_gradient, update_gradient2
+from cip import CIP2D, Jameson, SOR
 from landlab.io.native_landlab import save_grid
 from landlab.io.netcdf import write_netcdf
 
@@ -156,6 +156,8 @@ class TurbidityCurrent2D(Component):
         gamma=0.35,
         la=0.01,
         water_entrainment=True,
+        water_detrainment=True,
+        detrainment_coef=1.0,
         suspension=True,
         sed_entrainment_func="GP1991field",
         no_erosion=True,
@@ -255,6 +257,8 @@ class TurbidityCurrent2D(Component):
             self.gamma = gamma
             self.la = la
             self.water_entrainment = water_entrainment
+            self.water_detrainment = water_detrainment
+            self.detrainment_coef = detrainment_coef
             self.suspension = suspension
             self.sed_entrainment_func = sed_entrainment_func
             self.model = model
@@ -296,6 +300,8 @@ class TurbidityCurrent2D(Component):
             self.gamma = config['model_param']['gamma']
             self.la = config['model_param']['la']
             self.water_entrainment = config['model_param']['water_entrainment']
+            self.water_detrainment = config['model_param']['water_detrainment']
+            self.detrainment_coef = config['model_param']['detrainment_coef']
             self.suspension = config['model_param']['suspension']
             self.sed_entrainment_func = config['model_param']['sed_entrainment_func']
             self.model = config['model_param']['model']
@@ -1362,24 +1368,47 @@ class TurbidityCurrent2D(Component):
             self.ew_link[self.wet_vertical_links] = 0
             self.ew_node[self.wet_nodes] = 0
 
+        if self.water_detrainment is True:
+            det_rate_u = get_det_rate(
+                self.ws,
+                self.Ch_link_i[:, self.wet_horizontal_links],
+                self.h_link[self.wet_horizontal_links],
+                det_coef=self.detrainment_coef,
+            )
+            det_rate_v = get_det_rate(
+                self.ws,
+                self.Ch_link_i[:, self.wet_vertical_links],
+                self.h_link[self.wet_vertical_links],
+                det_coef=self.detrainment_coef,
+            )
+        else:
+            det_rate_u = 0.0
+            det_rate_v = 0.0
+
         # calculate friction terms using semi-implicit scheme
         self.u_temp[self.wet_horizontal_links] /= (
             1
             + (
+                (
                 self.Cf_link[self.wet_horizontal_links]
                 + self.ew_link[self.wet_horizontal_links]
             )
             * self.U[self.wet_horizontal_links]
+            - det_rate_u
+            )
             * self.dt_local
             / self.h_link[self.wet_horizontal_links]
         )
         self.v_temp[self.wet_vertical_links] /= (
             1
             + (
+                (
                 self.Cf_link[self.wet_vertical_links]
                 + self.ew_link[self.wet_vertical_links]
             )
             * self.U[self.wet_vertical_links]
+            - det_rate_v
+            )
             * self.dt_local
             / self.h_link[self.wet_vertical_links]
         )
@@ -1454,25 +1483,10 @@ class TurbidityCurrent2D(Component):
 
         # calculate flow expansion by water entrainment
         if self.water_entrainment is True:
-            # if there are no wet nodes, water detrainment is set to zero.
-            if self.Ch_i_temp[:, self.wet_nodes].size == 0:
-                de_w = 0.
-            # if there are wet nodes, watet entrainment is calculated at each wet nodes. 
+            if self.water_detrainment is True:
+                de_w = get_det_rate(self.ws, self.Ch_i [:, self.wet_nodes], self.h[self.wet_nodes], det_coef=self.detrainment_coef)
             else:
-                # calculate fraction of concentration at each grid
-                if self.salt is False:
-                    gsize = self.Ds
-                    conc_frac = (self.Ch_i_temp[:, self.wet_nodes]/self.h_temp[self.wet_nodes])/np.sum(self.Ch_i_temp[:, self.wet_nodes], axis=1).reshape(-1, 1)
-                elif self.salt is True:
-                    gsize = self.Ds[:-1]
-                    conc_frac = (self.Ch_i_temp[:-1, self.wet_nodes]/self.h_temp[self.wet_nodes])/np.sum(self.Ch_i_temp[:-1, self.wet_nodes], axis=1).reshape(-1, 1)
-                else:
-                    raise TypeError('self.salt should be boolean type.')
-                # calculate weighted mean grain size at each wet grid
-                weighted_mean_gsize = np.mean(gsize*conc_frac, axis=0)
-                # coefficient of detrainment rate
-                de_w_coef = 3.05
-                de_w = de_w_coef*get_ws(self.R, self.g, weighted_mean_gsize, self.nu)
+                de_w = 0.0
 
             self.h_temp[self.wet_nodes] += ((
                 self.ew_node[self.wet_nodes]
@@ -1480,9 +1494,6 @@ class TurbidityCurrent2D(Component):
                 - de_w)
                 * self.dt_local
             )
-
-            # pdb.set_trace()
-            # self.h_temp[self.wet_pwet_nodes] += ((self.dt_local*self.ew_node[self.wet_pwet_nodes]*self.U_node[self.wet_pwet_nodes]) / (1 + self.div[self.wet_pwet_nodes]*self.dt_local))
 
         # map nodes to links
         map_nodes_to_links(

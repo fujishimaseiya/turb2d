@@ -32,8 +32,8 @@ multi_param:
 
 grid_param:
   gridfile: 
-  length: 4.2
-  width: 1.9
+  flume_length: 4.2
+  flume_width: 1.9
   spacing: 0.05
   slope_outside: 0.1
   slope_inside: 0.1
@@ -72,6 +72,8 @@ model_param:
   gamma: 0.35
   la: 0.003
   water_entrainment: True
+  water_detrainment: True
+  detrainment_coeff: 3.05
   suspension: True
   sed_entrainment_func: GP1991exp
   no_erosion: True

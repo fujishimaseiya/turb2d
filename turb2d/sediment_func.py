@@ -60,6 +60,36 @@ def get_ws(R, g, Ds, nu):
 
     return ws
 
+def get_det_rate(ws, Ch_i, h, det_coef=1.0, out=None):
+    """ calculate water detrainment rate
+    Parameters
+    ------------
+    ws : float
+        settling velocity of sediment particles
+    Ch_i : float
+        sediment concentration of a turbidity current at wet nodes
+    h : float
+        flow depth of a turbidity current
+    det_coef : float
+        detrainment coefficient
+    out : ndarray
+        Outputs
+    """
+
+    if out is None:
+        out = np.zeros(h.shape)
+
+    # if there are no wet nodes, water detrainment is set to zero.
+    if Ch_i.size  == 0:
+        out = 0.0
+    # if there are wet nodes, water entrainment is calculated at each wet nodes. 
+    else:
+        # calculate weighted mean settlig velocity
+        weighted_mean_ws = np.mean(ws*Ch_i/h, axis=0)
+        # coefficient of detrainment rate
+        out = det_coef*weighted_mean_ws
+
+    return out
 
 def get_es(R, g, Ds, nu, u_star, U, h, r0, p_gp1991, function="GP1991field", out=None):
     """ Calculate entrainment rate of basal sediment to suspension using

@@ -1,6 +1,6 @@
 grid_param:
-  length: 4.5
-  width: 1.9
+  flume_length: 4.5
+  flume_width: 1.9
   spacing: 0.05
   slope_outside: 0.1
   slope_inside: 0.1
@@ -11,6 +11,8 @@ grid_param:
   canyon_half_width: 1.0
   canyon: canyon
   noise: 0.0
+  inlet_width: 0.64
+  inlet_length: 0.3
 
 model_param:
   h_init: 0.0
@@ -37,6 +39,8 @@ model_param:
   gamma: 0.35
   la: 0.003
   water_entrainment: True
+  water_detrainment: True
+  detrainment_coeff: 3.05
   suspension: True
   sed_entrainment_func: GP1991exp
   no_erosion: True
@@ -45,3 +49,4 @@ model_param:
   alpha_4eq: 0.4
   karman: 0.4
   p: 1.0
+  flow_type: continuous
