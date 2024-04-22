@@ -14,7 +14,7 @@ from landlab import FieldError
 # from landlab import FIXED_GRADIENT_BOUNDARY, FIXED_VALUE_BOUNDARY
 import pdb
 from tqdm import tqdm
-
+import yaml
 grid = create_topography(
     config_file="config_runturb2d.yml"
         )
@@ -28,12 +28,17 @@ grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
 C_ini = [0.00005, 0.00005, 0.00005, 0.00005, 0.00005]
 h_ini = 0.2
 U_ini = 0.2
-
+with open ('config_runturb2d.yml', 'r') as f:
+    config = yaml.safe_load(f)
+    flume_length = config['grid_param']['flume_length']
+    flume_width = config['grid_param']['flume_width']
+    inlet_width = config['grid_param']['inlet_width']
+inlet_edge = [(flume_width - inlet_width) / 2.0, (flume_width + inlet_width) / 2.0]
 # set inlet
-inlet = np.where((grid.x_of_node >= 0.63)
-                        & (grid.x_of_node <= 1.27) & (grid.y_of_node >= 4.35))
-inlet_link = np.where((grid.midpoint_of_link[:,0] >= 0.63) & (grid.midpoint_of_link[:,0] <= 1.27)
-                        & (grid.midpoint_of_link[:,1] >= 4.35))
+inlet = np.where((grid.x_of_node >= inlet_edge[0])
+                        & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == flume_length))
+inlet_link = np.where((grid.midpoint_of_link[:,0] >= inlet_edge[0]) & (grid.midpoint_of_link[:,0] <= inlet_edge[1])
+                        & (grid.midpoint_of_link[:,1] == flume_length))
 grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
 
 # check number of grain size classes
@@ -119,33 +124,22 @@ grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
 # pdb.set_trace()
 # making turbidity current object
 # last element of Ds has no setting velocity (salt).
-pdb.set_trace()
 tc = TurbidityCurrent2D(grid,
                         config_path="config_runturb2d.yml")
 
-
-path = '..'
-dirname = 'test_runturb2d'
-dirpath = os.path.join(path, dirname)
-if not os.path.exists(dirpath):
-    os.mkdir(dirpath)
-shutil.copy('run_turb2d_script.py', dirpath)
-shutil.copy('config_grid.yml', dirpath)
-shutil.copy('config_runmulti.yml', dirpath)
-shutil.copy('config_turb2d.yml', dirpath)
 # start calculation
 t = time.time()
-tc.save_nc('{}/tc{:04d}.nc'.format(dirpath, 0))
+tc.save_nc('tc{:04d}.nc'.format(0))
 Ch_init = np.sum(tc.C * tc.h)
-last = 100
+last = 200
 num = 1
 for j in range(1):
     for i in tqdm(range(1, last + 1), disable=False):
         tc.run_one_step(dt=1.0, repeat=j, last=i)
-        tc.save_nc('{}/tc{:04d}.nc'.format(dirpath, num))
+        tc.save_nc('tc{:04d}.nc'.format(num))
         if np.sum(tc.C * tc.h) / Ch_init < 0.01:
             break
         num = num + 1
-    tc.save_grid('{}/tc{:04d}.nc'.format(dirpath, num))
+    tc.save_grid('tc{:04d}.nc'.format(num))
 print('elapsed time: {} sec.'.format(time.time() - t))
 
