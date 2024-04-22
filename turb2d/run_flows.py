@@ -211,6 +211,17 @@ class RunMultiFlows():
     #         for i in range(self.num_runs):
     #             C_ini.append(np.random.uniform(val_1[0], val_1, self.grain_class_num))
 
+    def create_grid(self):
+        '''
+        create grid object
+        '''
+
+        if self.run_multi_config['grid_param']['gridfile'] is None:
+            grid = create_topography(config_file=self.run_multi_config_file)
+        else:
+            grid = create_topography_from_npy(filename=self.run_multi_config['grid_param']['gridfile'], spacing=self.run_multi_config['grid_param']['spacing'])
+
+        return grid
 
 
     def produce_surge_flow(self, C_ini, r_ini, h_ini):
@@ -266,28 +277,27 @@ class RunMultiFlows():
 
         return tc
 
-    def produce_continuous_flow(self, C_ini, U_ini, h_ini, cf_ini, alpha4eq_ini, r0_ini, p_gp1991):
-        if self.run_multi_config['grid_param']['gridfile'] is None:
-            grid = create_topography(
-                config_file=self.run_multi_config_file
-            )
-        else:
-            grid = create_topography_from_npy(filename=self.run_multi_config['grid_param']['gridfile'], 
-                                              spacing=self.run_multi_config['grid_param']['spacing'])
-        
+    def produce_continuous_flow(self, grid, C_ini, U_ini, h_ini, cf_ini, alpha4eq_ini, r0_ini, p_gp1991):
+
+        # set boundary condition
         grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
         grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
         grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
         grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
         
-        # set inlet
+        # set inlet region
         inlet_edge = [(self.run_multi_config['grid_param']['flume_width'] - self.run_multi_config['grid_param']['inlet_width']) / 2.0, 
                       (self.run_multi_config['grid_param']['flume_width'] + self.run_multi_config['grid_param']['inlet_width']) / 2.0]
 
         inlet = np.where((grid.x_of_node >= inlet_edge[0])
-                                & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == self.run_multi_config['grid_param']['flume_length']))
+                                & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == np.max(grid.y_of_node)))
         inlet_link = np.where((grid.midpoint_of_link[:,0] >= inlet_edge[0]) & (grid.midpoint_of_link[:,0] <= inlet_edge[1])
-                                & (grid.midpoint_of_link[:,1] == self.run_multi_config['grid_param']['flume_length']))
+                        & (grid.midpoint_of_link[:,1] == np.max(grid.y_of_node)))
+        # inlet = np.where((grid.x_of_node >= inlet_edge[0])
+        #                         & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == self.run_multi_config['grid_param']['flume_length']))
+        # inlet_link = np.where((grid.midpoint_of_link[:,0] >= inlet_edge[0]) & (grid.midpoint_of_link[:,0] <= inlet_edge[1])
+        #                         & (grid.midpoint_of_link[:,1] == self.run_multi_config['grid_param']['flume_length']))
+
         grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
 
         # check number of grain size classes
@@ -363,6 +373,8 @@ class RunMultiFlows():
                                 gamma=self.run_multi_config["model_param"]["gamma"],
                                 la=self.run_multi_config["model_param"]["la"],
                                 water_entrainment=self.run_multi_config["model_param"]["water_entrainment"],
+                                water_detrainment=self.run_multi_config["model_param"]["water_detrainment"],
+                                detrainment_coef=self.run_multi_config["model_param"]["detrainment_coef"],
                                 suspension=self.run_multi_config["model_param"]["suspension"],
                                 sed_entrainment_func=self.run_multi_config["model_param"]["sed_entrainment_func"],
                                 no_erosion=self.run_multi_config["model_param"]["no_erosion"],
@@ -371,6 +383,9 @@ class RunMultiFlows():
                                 alpha_4eq = alpha4eq_ini,
                                 p_gp1991=p_gp1991
                                 )
+        
+        print(self.run_multi_config["model_param"]["water_detrainment"])
+        print(self.run_multi_config["model_param"]["detrainment_coef"])
 
         return tc
 
@@ -379,20 +394,21 @@ class RunMultiFlows():
         """
 
         grain_class_num = self.grain_class_num
-        # Produce flow object
-        if self.flow_type == 'surge':
-            tc = self.produce_surge_flow(init_values[1], init_values[2], init_values[3])
-        elif self.flow_type == 'continuous':
-            tc = self.produce_continuous_flow(init_values[1], init_values[2], init_values[3], 
-                                                init_values[5], init_values[6],init_values[7],init_values[8])
-
-        # Run the model until endtime or 99% sediment settled
-        Ch_init = np.sum(tc.Ch)
-        t = 0
-        dt = 20
+        grid = self.create_grid()
 
         for i in range(self.repeat):
+            if self.flow_type == 'surge':
+                tc = self.produce_surge_flow(init_values[1], init_values[2], init_values[3])
+            elif self.flow_type == 'continuous':
+                tc = self.produce_continuous_flow(grid, init_values[1], init_values[2], init_values[3], 
+                                                    init_values[5], init_values[6],init_values[7],init_values[8])
+                
+             # Run the model until endtime or 99% sediment settled
+            Ch_init = np.sum(tc.Ch)
+            t = 0
+            dt = 20
             last = 1
+
             if self.timelimit is None:
                 if self.flow_type == "surge":
                     while (((np.sum(tc.Ch) / Ch_init) > 0.01) and (t < init_values[4])):
@@ -600,16 +616,16 @@ class RunMultiFlows():
         lock = l
 
     def create_datafile(self):
-
         num_runs = self.num_runs
         # grain_class_num = self.grain_class_num
 
         # check grid size
         C_list = np.full(self.grain_class_num, 0.01)
+        ini_grid = self.create_grid()
         if self.flow_type == 'surge':
             tc = self.produce_surge_flow(C_list, 100, 100)
         elif self.flow_type == 'continuous':
-            tc = self.produce_continuous_flow(C_list, 1, 1, 0.004, 0.1, 1.5, 0.1)
+            tc = self.produce_continuous_flow(ini_grid, C_list, 1, 1, 0.004, 0.1, 1.5, 0.1)
         grid_x = tc.grid.nodes.shape[0]
         grid_y = tc.grid.nodes.shape[1]
         dx = tc.grid.dx
