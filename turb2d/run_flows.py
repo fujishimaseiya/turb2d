@@ -72,6 +72,7 @@ class RunMultiFlows():
             alpha_4eqmin, alpha_4eqmax = [run_multi_config["multi_param"]['alpha_4eqmin'], run_multi_config["multi_param"]['alpha_4eqmax']]
             r0min, r0max = [run_multi_config["multi_param"]['r0min'], run_multi_config["multi_param"]['r0max']]
             pmin, pmax = [run_multi_config["multi_param"]['pmin'], run_multi_config["multi_param"]['pmax']]
+            detcoef_min, detcoef_max = [run_multi_config["multi_param"]['det_coef_min'], run_multi_config["multi_param"]['det_coef_max']]
             
             if len(run_multi_config["model_param"]['Ds']) == 1:
                 C_total = np.random.uniform(C_total_min, C_total_max, (run_multi_config["multi_param"]['num_runs'], run_multi_config["multi_param"]['grain_class_num']))
@@ -165,6 +166,11 @@ class RunMultiFlows():
             else:
                 p_gp1991 = np.random.uniform(pmin, pmax, num_runs)
 
+            if detcoef_min == detcoef_max:
+                detrainment_coef = np.full(num_runs, pmin)
+            else:
+                detrainment_coef = np.random.uniform(detcoef_min, detcoef_max, num_runs)
+            print("in create_datafile {}".format(detrainment_coef))
             df = pd.DataFrame({'h_ini': h_ini,
                                'r_ini': r_ini,
                                'u_ini': U_ini,
@@ -172,6 +178,7 @@ class RunMultiFlows():
                                'r0': r0,
                                'alpha_4eq': alpha_4eq,
                                'p': p_gp1991,
+                               'det_coef': detrainment_coef,
                                'duration': endtime
                                })
             column_name = []
@@ -191,6 +198,7 @@ class RunMultiFlows():
             self.Cf = Cf
             self.r0 = r0
             self.p_gp1991 = p_gp1991
+            self.detrainment_coef = detrainment_coef
             self.filename = filename
             self.dirpath = dirpath
             self.run_multi_config = run_multi_config
@@ -277,7 +285,7 @@ class RunMultiFlows():
 
         return tc
 
-    def produce_continuous_flow(self, grid, C_ini, U_ini, h_ini, cf_ini, alpha4eq_ini, r0_ini, p_gp1991):
+    def produce_continuous_flow(self, grid, C_ini, U_ini, h_ini, cf_ini, alpha4eq_ini, r0_ini, p_gp1991, det_coef):
 
         # set boundary condition
         grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
@@ -374,7 +382,7 @@ class RunMultiFlows():
                                 la=self.run_multi_config["model_param"]["la"],
                                 water_entrainment=self.run_multi_config["model_param"]["water_entrainment"],
                                 water_detrainment=self.run_multi_config["model_param"]["water_detrainment"],
-                                detrainment_coef=self.run_multi_config["model_param"]["detrainment_coef"],
+                                detrainment_coef=det_coef,
                                 suspension=self.run_multi_config["model_param"]["suspension"],
                                 sed_entrainment_func=self.run_multi_config["model_param"]["sed_entrainment_func"],
                                 no_erosion=self.run_multi_config["model_param"]["no_erosion"],
@@ -383,9 +391,6 @@ class RunMultiFlows():
                                 alpha_4eq = alpha4eq_ini,
                                 p_gp1991=p_gp1991
                                 )
-        
-        print(self.run_multi_config["model_param"]["water_detrainment"])
-        print(self.run_multi_config["model_param"]["detrainment_coef"])
 
         return tc
 
@@ -401,7 +406,7 @@ class RunMultiFlows():
                 tc = self.produce_surge_flow(init_values[1], init_values[2], init_values[3])
             elif self.flow_type == 'continuous':
                 tc = self.produce_continuous_flow(grid, init_values[1], init_values[2], init_values[3], 
-                                                    init_values[5], init_values[6],init_values[7],init_values[8])
+                                                    init_values[5], init_values[6],init_values[7],init_values[8], init_values[9])
                 
              # Run the model until endtime or 99% sediment settled
             Ch_init = np.sum(tc.Ch)
@@ -539,6 +544,7 @@ class RunMultiFlows():
             alpha4eq_i = init_values[6]
             r0_i = init_values[7]
             p_gp1991_i = init_values[8]
+            det_coef_i = init_values[9]
 
             dfile = netCDF4.Dataset(self.filename, 'a', share=True)
             C_ini = dfile.variables['C_ini']
@@ -552,6 +558,7 @@ class RunMultiFlows():
             alpha_4eq = dfile.variables['alpha_4eq']
             r0 = dfile.variables['r0']
             p_gp1991 = dfile.variables['p_gp1991']
+            det_coef = dfile.variables['det_coef']
 
             C_ini[run_id] = C_ini_i
             U_ini[run_id] = U_ini_i
@@ -564,6 +571,7 @@ class RunMultiFlows():
             alpha_4eq[run_id] = alpha4eq_i
             r0[run_id] = r0_i
             p_gp1991[run_id] = p_gp1991_i
+            det_coef[run_id] = det_coef_i
 
             for i in range(grain_class_num):
                 sed_volume_per_unit_area = dfile.variables['sed_volume_per_unit_area_{}'.format(i)]
@@ -598,11 +606,12 @@ class RunMultiFlows():
             alpha_4eq = self.alpha_4eq
             r0 = self.r0
             p = self.p_gp1991
+            det_coef = self.detrainment_coef
 
             # Create list of initial values
             init_value_list = list()
             for i in range(len(C_ini)):
-                init_value_list.append([i, C_ini[i], U_ini[i], h_ini[i],endtime[i], Cf[i],alpha_4eq[i], r0[i], p[i]])
+                init_value_list.append([i, C_ini[i], U_ini[i], h_ini[i], endtime[i], Cf[i],alpha_4eq[i], r0[i], p[i], det_coef[i]])
 
         # run flows using multiple processors
         l = mp.Lock()
@@ -625,7 +634,7 @@ class RunMultiFlows():
         if self.flow_type == 'surge':
             tc = self.produce_surge_flow(C_list, 100, 100)
         elif self.flow_type == 'continuous':
-            tc = self.produce_continuous_flow(ini_grid, C_list, 1, 1, 0.004, 0.1, 1.5, 0.1)
+            tc = self.produce_continuous_flow(ini_grid, C_list, 1, 1, 0.004, 0.1, 1.5, 0.1, 1.0)
         grid_x = tc.grid.nodes.shape[0]
         grid_y = tc.grid.nodes.shape[1]
         dx = tc.grid.dx
@@ -723,6 +732,10 @@ class RunMultiFlows():
         p_gp1991 = datafile.createVariable('p_gp1991', np.dtype('float64').char, ('run_no'))
         p_gp1991.long_name = 'Coefficient of Garcia and Perker (1991)'
         p_gp1991.units = "dimensionless"
+
+        det_coef = datafile.createVariable('det_coef', np.dtype('float64').char, ('run_no'))
+        det_coef.long_name = 'Coefficient of water detrainment rate'
+        det_coef.units = "dimensionless"
 
         # close dateset
         datafile.close()

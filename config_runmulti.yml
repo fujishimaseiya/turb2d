@@ -26,6 +26,8 @@ multi_param:
   alpha_4eqmax: 0.6
   r0min: 1.0
   r0max: 2.0
+  det_coef_min: 0.01
+  det_coef_max: 4.0
   repeat: 2
   timelimit: # None
   flow_type: continuous
