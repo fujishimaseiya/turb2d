@@ -1805,7 +1805,7 @@ class TurbidityCurrent2D(Component):
         U_exist = self.U_temp[self.wet_pwet_links] > 1.0e-10
         self.Cf_link[self.wet_pwet_links[U_exist]] = (
             alpha
-            * self.Kh_temp[self.wet_pwet_links[U_exist]]
+            * (self.Kh_temp[self.wet_pwet_links[U_exist]]/self.h_link_temp[self.wet_pwet_links[U_exist]])
             / self.U_temp[self.wet_pwet_links[U_exist]]
             / self.U_temp[self.wet_pwet_links[U_exist]]
         )
