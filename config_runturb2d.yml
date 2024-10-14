@@ -40,7 +40,7 @@ model_param:
   la: 0.003
   water_entrainment: True
   water_detrainment: True
-  detrainment_coeff: 3.05
+  detrainment_coef: 3.05
   suspension: True
   sed_entrainment_func: GP1991exp
   no_erosion: True
