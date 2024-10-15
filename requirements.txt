@@ -4,10 +4,12 @@
 #
 #    pip-compile --output-file requirements.txt requirements.in
 #
-cython
-landlab=2.2
-matplotlib
-numpy
-gdal<=3.2
-scipy
-tqdm
+cython==0.29.33
+landlab==2.8.0
+rasterio==1.4.1
+matplotlib==3.7.1
+numpy==1.24.3
+scipy==1.10.1
+tqdm==4.65.0
+pathlib==1.0.1
+xarray==2023.5.0
