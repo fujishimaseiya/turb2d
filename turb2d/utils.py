@@ -6,12 +6,12 @@
 
 from landlab import RasterModelGrid
 import numpy as np
-from osgeo import gdal, gdalconst
-from scipy.ndimage import median_filter
+from scipy.ndimage import median_filter, zoom
 from landlab import FieldError
 from decimal import Decimal
 import os
 import yaml
+import rasterio
 
 def create_topography(
     config_file=None,
@@ -264,21 +264,41 @@ def create_topography_from_geotiff(
     """
 
     # read a geotiff file into ndarray
-    topo_file = gdal.Open(geotiff_filename, gdalconst.GA_ReadOnly)
-    topo_data = topo_file.GetRasterBand(1).ReadAsArray()
+    with rasterio.open(geotiff_filename) as src:
+        topo_data = src.read(1)[::-1, :]
+        profile = src.profile
+        width = profile["width"]
+        height = profile["height"]
+        transform = src.transform
+        dx = transform[0]
+        min_x, max_y = transform * (0, 0)
+        max_x, min_y = transform * (width, height)
+        xy_of_lower_left = (min_x, min_y)
+
+    # print(topo_data.shape)
     if (xlim is not None) and (ylim is not None):
         topo_data = topo_data[xlim[0] : xlim[1], ylim[0] : ylim[1]]
 
     # Smoothing by median filter
     topo_data = median_filter(topo_data, size=filter_size)
 
-    grid = RasterModelGrid(topo_data.shape, xy_spacing=[spacing, spacing])
+    # change grid size if the parameter spacing is specified
+    if spacing is not None and spacing != dx:
+        zoom_factor = dx / spacing
+        topo_data = zoom(topo_data, zoom_factor)
+        dx = spacing
+
+    grid = RasterModelGrid(
+        topo_data.shape, xy_spacing=[dx, dx], xy_of_lower_left=xy_of_lower_left
+    )
     grid.add_zeros("flow__depth", at="node")
     grid.add_zeros("topographic__elevation", at="node")
     grid.add_zeros("flow__horizontal_velocity", at="link")
     grid.add_zeros("flow__vertical_velocity", at="link")
     grid.add_zeros("bed__thickness", at="node")
     grid.at_node["topographic__elevation"][grid.nodes] = topo_data
+    grid.add_zeros("flow__horizontal_velocity_at_node", at="node")
+    grid.add_zeros("flow__vertical_velocity_at_node", at="node")
 
     return grid
 
