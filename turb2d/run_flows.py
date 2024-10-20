@@ -166,8 +166,11 @@ class RunMultiFlows():
             else:
                 p_gp1991 = np.random.uniform(pmin, pmax, num_runs)
 
-            if detcoef_min == detcoef_max:
-                detrainment_coef = np.full(num_runs, pmin)
+            if detcoef_min is None:
+                detrainment_coef = np.empty((num_runs, ))
+                detrainment_coef[:] = np.nan
+            elif detcoef_min == detcoef_max:
+                detrainment_coef = np.full(num_runs, detcoef_min)
             else:
                 detrainment_coef = np.random.uniform(detcoef_min, detcoef_max, num_runs)
             print("in create_datafile {}".format(detrainment_coef))
