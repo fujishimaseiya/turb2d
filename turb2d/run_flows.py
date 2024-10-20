@@ -148,7 +148,7 @@ class RunMultiFlows():
             else:
                 Cf = np.random.uniform(Cfmin, Cfmax, num_runs)
             # np.savetxt(os.path.join(dirpath, 'Cf.csv'), Cf, delimiter=',')
-            if alpha_4eqmin is None:
+            if alpha_4eqmin is None and alpha_4eqmax is None:
                 alpha_4eq = np.empty((num_runs, ))
                 alpha_4eq[:] = np.nan
             elif alpha_4eqmin == alpha_4eqmax:
