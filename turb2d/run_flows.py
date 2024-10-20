@@ -175,7 +175,6 @@ class RunMultiFlows():
                 detrainment_coef = np.full(num_runs, detcoef_min)
             else:
                 detrainment_coef = np.random.uniform(detcoef_min, detcoef_max, num_runs)
-            print("in create_datafile {}".format(detrainment_coef))
             df = pd.DataFrame({'h_ini': h_ini,
                                'r_ini': r_ini,
                                'u_ini': U_ini,
