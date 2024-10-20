@@ -148,8 +148,10 @@ class RunMultiFlows():
             else:
                 Cf = np.random.uniform(Cfmin, Cfmax, num_runs)
             # np.savetxt(os.path.join(dirpath, 'Cf.csv'), Cf, delimiter=',')
-
-            if alpha_4eqmin == alpha_4eqmax:
+            if alpha_4eqmin is None:
+                alpha_4eq = np.empty((num_runs, ))
+                alpha_4eq[:] = np.nan
+            elif alpha_4eqmin == alpha_4eqmax:
                 alpha_4eq = np.full(num_runs, alpha_4eqmin)
             else:
                 alpha_4eq = np.random.uniform(alpha_4eqmin, alpha_4eqmax, num_runs)
@@ -166,7 +168,7 @@ class RunMultiFlows():
             else:
                 p_gp1991 = np.random.uniform(pmin, pmax, num_runs)
 
-            if detcoef_min is None:
+            if detcoef_min is None and detcoef_max is None:
                 detrainment_coef = np.empty((num_runs, ))
                 detrainment_coef[:] = np.nan
             elif detcoef_min == detcoef_max:
