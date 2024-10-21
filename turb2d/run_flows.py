@@ -175,6 +175,7 @@ class RunMultiFlows():
                 detrainment_coef = np.full(num_runs, detcoef_min)
             else:
                 detrainment_coef = np.random.uniform(detcoef_min, detcoef_max, num_runs)
+                
             df = pd.DataFrame({'h_ini': h_ini,
                                'r_ini': r_ini,
                                'u_ini': U_ini,
@@ -495,15 +496,14 @@ class RunMultiFlows():
             )
         )
         
-        lock.acquire()
-        self.save_data(init_values, 
-                        bed_thick, 
-                        sed_volume_per_unit_area, 
-                        layer_ave_vel,
-                        layer_ave_conc, 
-                        flow_depth)
-        lock.release()
-        print('Run no. {} finished'.format(init_values[0]))
+        with lock:
+            self.save_data(init_values, 
+                            bed_thick, 
+                            sed_volume_per_unit_area, 
+                            layer_ave_vel,
+                            layer_ave_conc, 
+                            flow_depth)
+            print('Run no. {} finished'.format(init_values[0]))
 
     def save_data(self, init_values, bed_thick_i, sed_volume_per_unit_area_i, 
                 layer_ave_vel, layer_ave_conc, flow_depth):
