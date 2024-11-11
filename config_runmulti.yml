@@ -3,7 +3,6 @@ multi_param:
   filename: run_3000.nc
   num_runs: 10
   processors: 10
-  grain_class_num: 5
   C_total_min: #0.0001
   C_total_max: #0.005
   Cmin: 0.00001

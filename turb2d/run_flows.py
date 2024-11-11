@@ -75,19 +75,19 @@ class RunMultiFlows():
             detcoef_min, detcoef_max = [run_multi_config["multi_param"]['det_coef_min'], run_multi_config["multi_param"]['det_coef_max']]
             
             if len(run_multi_config["model_param"]['Ds']) == 1:
-                C_total = np.random.uniform(C_total_min, C_total_max, (run_multi_config["multi_param"]['num_runs'], run_multi_config["multi_param"]['grain_class_num']))
+                C_total = np.random.uniform(C_total_min, C_total_max, (run_multi_config["multi_param"]['num_runs'], len(run_multi_config["model_param"]['Ds'])))
                 C_ini = C_total
                 
             elif len(run_multi_config["model_param"]['Ds'])>=2:
                 if C_total_min is None and C_total_max is None:
                     if run_multi_config["model_param"]["salt"] is True:
-                        c_i = np.random.uniform(Cmin, Cmax, (run_multi_config["multi_param"]["num_runs"], run_multi_config["multi_param"]['grain_class_num']-1))
+                        c_i = np.random.uniform(Cmin, Cmax, (run_multi_config["multi_param"]["num_runs"], len(run_multi_config["model_param"]['Ds'])-1))
                         salt = np.array([np.random.uniform(saltmin, saltmax, run_multi_config["multi_param"]['num_runs'])])
                         salt = salt.reshape((run_multi_config["multi_param"]["num_runs"], 1))
                         C_ini = np.append(c_i, salt, axis=1)
 
                     elif run_multi_config["model_param"]["salt"] is False:
-                        c_i = np.random.uniform(Cmin, Cmax, (run_multi_config["multi_param"]["num_runs"], run_multi_config["multi_param"]['grain_class_num']))
+                        c_i = np.random.uniform(Cmin, Cmax, (run_multi_config["multi_param"]["num_runs"], len(run_multi_config["model_param"]['Ds'])))
                         C_ini = c_i
                     
                     else:
@@ -97,7 +97,7 @@ class RunMultiFlows():
                     C_ini = []
                     C_total = np.random.rand(run_multi_config["multi_param"]["num_runs"])
                     if run_multi_config["model_param"]["salt"] is True:
-                        frac_conc = np.random.rand(num_runs, run_multi_config["multi_param"]['grain_class_num']-1)
+                        frac_conc = np.random.rand(num_runs, len(run_multi_config["model_param"]['Ds'])-1)
                         frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
                         c_i = frac_conc_norm*C_total.reshape(-1, 1)
                         salt = np.array([np.random.uniform(saltmin, saltmax, run_multi_config["multi_param"]['num_runs'])])
@@ -105,7 +105,7 @@ class RunMultiFlows():
                         C_ini = np.append(c_i, salt, axis=1)
                     
                     elif run_multi_config["model_param"]["salt"] is False:
-                        frac_conc = np.random.rand(num_runs, run_multi_config["multi_param"]['grain_class_num'])
+                        frac_conc = np.random.rand(num_runs, len(run_multi_config["model_param"]['Ds']))
                         frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
                         c_i = frac_conc_norm*C_total.reshape(-1, 1)
                         C_ini = c_i
@@ -187,7 +187,7 @@ class RunMultiFlows():
                                'duration': endtime
                                })
             column_name = []
-            for i in range(run_multi_config["multi_param"]['grain_class_num']):
+            for i in range(len(run_multi_config["model_param"]['Ds'])):
                 name = 'C{}'.format(i)
                 column_name.append(name)
             df_conc = pd.DataFrame(C_ini, columns=column_name)
@@ -212,7 +212,7 @@ class RunMultiFlows():
             self.processors = run_multi_config["multi_param"]['processors']
             self.flow_type = run_multi_config["multi_param"]['flow_type']
             self.timelimit = run_multi_config["multi_param"]['timelimit']
-            self.grain_class_num = run_multi_config["multi_param"]['grain_class_num']
+            self.grain_class_num = len(run_multi_config["model_param"]['Ds'])
             self.repeat = run_multi_config["multi_param"]['repeat']
 
 
