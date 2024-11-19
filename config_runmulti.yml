@@ -78,6 +78,7 @@ model_param:
   suspension: True
   sed_entrainment_func: GP1991exp
   no_erosion: True
+  bedload_transport: True
   model: 4eq
   salt: True
   alpha_4eq: 0.4
