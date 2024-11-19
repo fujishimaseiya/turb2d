@@ -391,6 +391,7 @@ class RunMultiFlows():
                                 suspension=self.run_multi_config["model_param"]["suspension"],
                                 sed_entrainment_func=self.run_multi_config["model_param"]["sed_entrainment_func"],
                                 no_erosion=self.run_multi_config["model_param"]["no_erosion"],
+                                bedload_transport=self.run_multi_config["model_param"]["bedload_transport"],
                                 salt = self.run_multi_config["model_param"]["salt"],
                                 model=self.run_multi_config["model_param"]["model"],
                                 alpha_4eq = alpha4eq_ini,

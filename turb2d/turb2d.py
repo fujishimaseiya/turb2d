@@ -224,6 +224,10 @@ class TurbidityCurrent2D(Component):
             is 'GP1991field', and other options are: 'GP1991exp', 'vanRijn1984'
         no_erosion: boolean, optional
             If True, bed cannot be eroded
+        bedload_transport: boolean, optional
+            If True, bedload transport is calculated
+        salt: boolean, optional
+            If True, Ds[-1] is treated as salt (settling velocity is 0).
         model: string, optional
             Choose "3eq" or "4eq" for the three or four equation model of Parker
             (1986)
