@@ -37,7 +37,6 @@ setup(
         "scipy",
         "landlab",
         "matplotlib",
-        "gdal",
         "tqdm",
     ],
     # ext_modules=cythonize([ext, ext2]),
