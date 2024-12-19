@@ -188,11 +188,19 @@ def _gp1991(R, g, Ds, nu, u_star, U, h, p=1.0, out=None):
     sus_index = u_star / ws
 
     # coefficients for calculation
-    a = 7.8 * 10 ** -7
-    alpha = 0.6
+    a = 1.3 * 10 ** -7
+    alpha_1 = np.zeros(Rp.shape)
+    alpha_2 = np.zeros(Rp.shape)
+    for i in range(len(Rp)):
+        if Rp[i] > 2.36:
+            alpha_1[i] = 1.0
+            alpha_2[i] = 0.6
+        elif Rp[i] <= 2.36:
+            alpha_1[i] = 0.586
+            alpha_2[i] = 1.23
 
     # calculate entrainment rate
-    Z = sus_index * Rp ** alpha
+    Z = alpha_1 * sus_index * Rp ** alpha_2
     out[:, :] = p * a * Z ** 5 / (1 + (a / 0.3) * Z ** 5)
     P_f = u_star**2*(np.abs(U))
     N_f = g*R*h*ws
