@@ -1759,7 +1759,7 @@ class TurbidityCurrent2D(Component):
             U=self.U_temp,
         )
         self.Kh_temp[self.wet_pwet_links[self.Kh_temp[self.wet_pwet_links] < 0]] = 0.0
-        # self.Fr[self.wet_pwet_links] = self.U[self.wet_pwet_links]/(self.g*self.h_link[self.wet_pwet_links])**0.5
+        # Fr = self.U[self.wet_pwet_links]/(self.R*self.g*(np.sum(self.Ch_i[self.wet_pwet_links], axis=0)/self.h_link[self.wet_pwet_links])*self.h_link[self.wet_pwet_links])**0.5
         # print(Fr)
         # development of turbulent kinetic energy
         alpha = self.alpha_4eq
@@ -2272,18 +2272,18 @@ class TurbidityCurrent2D(Component):
 
         # Calculate entrainment rate
         self.es[:, nodes], self.flow_power[:, nodes], self.Phi[:, nodes] = get_es(
-            self.R,
-            self.g,
-            self.Ds,
-            self.nu,
-            u_star,
-            U_node[nodes], 
-            h[nodes], 
-            r0,
-            self.p_gp1991,
+            R=self.R,
+            g=self.g,
+            Ds=self.Ds,
+            nu=self.nu,
+            u_star=u_star,
+            U=U_node[nodes], 
+            h=h[nodes], 
+            Ch=Ch_i[:, nodes],
+            r0=r0,
+            p_gp1991=self.p_gp1991,
             function=self.sed_entrainment_func
         )
-        
         # Calculate the change of volume of suspended sediment
         # Settling is solved explicitly, and entrainment is
         # solved semi-implicitly
