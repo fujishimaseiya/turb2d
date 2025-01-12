@@ -90,7 +90,7 @@ def get_det_rate(ws, Ch_i, h, det_coef=1.0, out=None):
 
     return out
 
-def get_es(R, g, Ds, nu, u_star, U, h, Ch, r0, p_gp1991, function="GP1991field", out=None):
+def get_es(R, g, Ds, nu, u_star, U, h, Ch, S, r0, salt, p_gp1991, function="GP1991field", out=None):
     """ Calculate entrainment rate of basal sediment to suspension using
         empirical functions proposed by Garcia and Parker (1991),
         van Rijn (1984), or Dorrell (2018)
@@ -115,6 +115,10 @@ def get_es(R, g, Ds, nu, u_star, U, h, Ch, r0, p_gp1991, function="GP1991field",
             Volume of suspended sediment in the flow
         r0: float
             Ratio of near-bed concentration to layer-averaged concentration
+        S: ndarray
+            slope of the bed
+        salt: bool
+            True if the flow is saline, False if the flow is fresh
         p_gp1991: float
             coefficient in Garcia and Parker (1991)
         function : string, optional
@@ -153,7 +157,7 @@ def get_es(R, g, Ds, nu, u_star, U, h, Ch, r0, p_gp1991, function="GP1991field",
     elif function=='Fukuda_etal_2023':
         out, flow_power, Phi = _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=out)
     elif function=='Leeuw_2020':
-        out, flow_power, Phi = _leeuw_2020(u_star, U, Ch, g, R, h, Ds, nu, out=out)
+        out, flow_power, Phi = _leeuw_2020(u_star=u_star, U=U, Ch=Ch, g=g, R=R, h=h, Ds=Ds, nu=nu, salt=salt, S=S, out=out)
     else:
         raise ValueError("Please enter the correct entrainment function")
 
@@ -254,15 +258,24 @@ def _fukuda_etal_2023(u_star, U, g, R, h, Ds, nu, r0, out=None):
 
     return out, flow_power, phi
 
-def _leeuw_2020(u_star, U, Ch, g, R, h, Ds, nu, out=None):
+def _leeuw_2020(u_star, U, Ch, g, R, h, Ds, nu, salt, S, out=None):
     """This is a method for calculation of sediment entrainment rate based on Leeuw (2020).
-   Two parameter model using u_star (not using u_star_skin) is employed."""
-    C = Ch/h
-    Fr = np.abs(U)/np.sqrt(R*g*C*h)
+   Two parameter model is employed."""
+    if salt is True:
+        C_i = Ch[:4, :]/h
+    elif salt is False:
+        C_i = Ch/h 
+    C_T = np.sum(C_i, axis=0)
+    Fr = U/np.sqrt(R*g*C_T*h)
     ws = get_ws(R, g, Ds, nu)
-
-    out[:, :] = 7.04 * 10**-4 * ((u_star/ws)**0.945 * Fr - 0.05)**1.81 / (1 + 3 * (7.04 * 10**-4 * ((u_star/ws)**0.945 * Fr - 0.05)**1.81))
-
+    # Z = (u_star/ws)**0.945 * Fr - 0.05
+    # Z[Z < 0.0] = 0.0
+    ks = 2*np.mean(Ds[:4, :])
+    h_sk = U**(3/2) * ks**(1/4) / (8.1**(2/3) * (R*C_T*g*S)**(3/4))
+    u_star_skin = np.sqrt(R*C_T*g*h_sk*S)
+    # out[:, :] = 7.04 * 10**-4 * (u_star/ws)**1.71 * Fr**1.81
+    # out[:, :] = 7.04 * 10**-4 * (Z**1.81) / (1 + 3 * (7.04 * 10**-4 * Z**1.81))
+    out[:, :] = (4.74 * 10**-4) * ((u_star_skin/ws)**1.77) * Fr**1.18
     P_f = u_star**2*(np.abs(U))
     N_f = g*R*h*ws
     flow_power = P_f/N_f
