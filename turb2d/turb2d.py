@@ -136,6 +136,8 @@ class TurbidityCurrent2D(Component):
     def __init__(
         self,
         grid,
+        inlet=None,
+        inlet_link=None,
         config_path=None,
         h_init=0.0,
         Ch_w=10 ** (-4),
@@ -279,6 +281,9 @@ class TurbidityCurrent2D(Component):
             else:
                 self.p_gp1991 = None
             self.flow_type = flow_type
+            self.inlet = inlet
+            self.inlet_link = inlet_link
+
         else:
             with open(config_path) as yml:
                 config = yaml.safe_load(yml)
@@ -324,6 +329,8 @@ class TurbidityCurrent2D(Component):
                 self.p_gp1991 = None
             self.flow_type = config['model_param']['flow_type']
             self.config = config
+            self.inlet = inlet
+            self.inlet_link = inlet_link
 
         # Now setting up fields at nodes and links
         try:
@@ -918,6 +925,8 @@ class TurbidityCurrent2D(Component):
         # initialized
         if self.neighbor_flag is False:
             set_up_neighbor_arrays(self)
+            # calculate initial Kh
+            self.Kh[self.inlet_link] = self.h_link[self.inlet_link]*self.Cf*self.v[self.inlet_link]**2/self.alpha_4eq
 
         # In case another component has added data to the fields, we just
         # reset our water depths, topographic elevations and water
@@ -1782,7 +1791,7 @@ class TurbidityCurrent2D(Component):
         #     - beta * K ** 1.5
         # first-order euler method
         self.Kh_temp[self.wet_pwet_links] += self.dt_local * (
-            (self.Cf + 0.5 * self.ew_link[self.wet_pwet_links])
+            (self.Cf_link[self.wet_pwet_links] + 0.5 * self.ew_link[self.wet_pwet_links])
             * self.U_temp[self.wet_pwet_links]
             * self.U_temp[self.wet_pwet_links]
             * self.U_temp[self.wet_pwet_links]
@@ -2271,6 +2280,8 @@ class TurbidityCurrent2D(Component):
         u_star = np.sqrt(self.Cf_node[nodes] * U_node[nodes] * U_node[nodes])
 
         # Calculate entrainment rate
+        S_grid = self.grid.calc_slope_at_node()
+        slope_at_node = S_grid[nodes]
         self.es[:, nodes], self.flow_power[:, nodes], self.Phi[:, nodes] = get_es(
             R=self.R,
             g=self.g,
@@ -2280,7 +2291,9 @@ class TurbidityCurrent2D(Component):
             U=U_node[nodes], 
             h=h[nodes], 
             Ch=Ch_i[:, nodes],
+            S=slope_at_node,
             r0=r0,
+            salt=self.salt,
             p_gp1991=self.p_gp1991,
             function=self.sed_entrainment_func
         )

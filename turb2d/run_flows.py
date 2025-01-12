@@ -367,6 +367,8 @@ class RunMultiFlows():
         grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
         
         tc = TurbidityCurrent2D(grid,
+                                inlet=inlet,
+                                inlet_link=inlet_link,
                                 h_init=self.run_multi_config["model_param"]["h_init"],
                                 Ch_w=self.run_multi_config["model_param"]["Ch_w"],
                                 h_w=self.run_multi_config["model_param"]["h_w"],
