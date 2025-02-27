@@ -98,7 +98,8 @@ class TurbidityCurrent2D(Component):
         "bed__sediment_volume_per_unit_area_i": "m",
         "der__flow__sediment_concentration_i": "1",
         "Ch": "1", 
-        "composite_velocity": "m/s"
+        "composite_velocity": "m/s",
+        "Densimetric_Froude_number": "1"
     }
 
     _var_mapping = {
@@ -560,6 +561,15 @@ class TurbidityCurrent2D(Component):
             for i in range(self.number_gclass):
                 self.es_i[i,
                          :] = grid.at_node["sediment_entrainment_rate_" + str(i)]
+        
+        try:
+            self.Fr = grid.add_zeros(
+                "Densimetric_Froude_number", 
+                at="node",
+                units = self._var_units["Densimetric_Froude_number"]
+            )
+        except FieldError:
+            self.Fr = grid.at_node["Densimetric_Froude_number"]
 
         self.h += self.h_init
         self.C += self.C_init
@@ -1084,7 +1094,12 @@ class TurbidityCurrent2D(Component):
         self.bed_thick[self.grid.nodes_at_left_edge] = 0.0
         self.bed_thick[self.grid.nodes_at_right_edge] = 0.0
         self.bed_thick[self.grid.nodes_at_bottom_edge] = 0.0
-        self.Ri[self.wet_nodes] = (self.R*self.g*self.C[self.wet_nodes]*self.h[self.wet_nodes])/self.U_node[self.wet_nodes]**2
+        Ri_temp = np.zeros_like(self.Ri)
+        self.Ri[:] = np.divide(self.R*self.g*self.Ch[:], self.U_node[:]**2, out=Ri_temp, where=(self.U_node[:]**2 != 0))
+        nonzero_idx = np.where(self.Ri != 0)
+        zero_idx = np.where(self.Ri == 0)
+        self.Fr[nonzero_idx] = self.Ri[nonzero_idx]**(-0.5)
+        self.Fr[zero_idx] = 0.
         self.Ch_nodes[:] = self.Ch[:]
         self.U_nodes[:] = self.U_node[:]
         # self.bed_thick[self.grid.nodes_at_right_edge] = 0.0
@@ -2711,6 +2726,7 @@ class TurbidityCurrent2D(Component):
             "flow__sediment_concentration_total",
             "bed__thickness", 
             "Richardson_number",
+            "Densimetric_Froude_number",
             "Ch",
             "composite_velocity"
         ]
