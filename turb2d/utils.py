@@ -235,8 +235,18 @@ def create_nested_grid(config_file=None,
         noise=noise
     )
 
-    # Get indices of the region of interest
-    xmin, xmax, ymin, ymax = nested_region
+    # open configuration file
+    if config_file is not None:
+        with open(config_file) as yml:
+            config = yaml.safe_load(yml)
+        child_grid_spacing = config['grid_param']['child_grid_spacing']
+        xmin = config['grid_param']['nested_region_xmin']
+        xmax = config['grid_param']['nested_region_xmax']
+        ymin = config['grid_param']['nested_region_ymin']
+        ymax = config['grid_param']['nested_region_ymax']
+    else:
+        # Get indices of the region of interest
+        xmin, xmax, ymin, ymax = nested_region
 
     # Initialize the child grid
     lgrids = (xmax - xmin) / child_grid_spacing
