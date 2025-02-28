@@ -163,19 +163,59 @@ def create_nested_grid(config_file=None,
 
     Parameters
     ----------------------
-    grid: RasterModelGrid
-       a parent grid object
-    
-    nested_region: list
-       [xmin, xmax, ymin, ymax] coordinates of a region of interest
-    
-    child_grid_spacing: float
-         grid spacing of a child grid
+    config_file: String, optional
+        path to a configuration file
 
-    Return
+    length: float, optional
+        length of calculation domain of parent grid [m]
+    
+    width: float, optional
+        width of calculation domain of parent grid [m]
+    
+    spacing: float, optional
+        grid spacing of parent grid [m]
+    
+    slope_outside: float, optional
+        topographic inclination in the region outside the canyon
+    
+    slope_inside: float, optional
+        topographic inclination in the region inside the thalweg of the canyon
 
+    slope_basin: float, optional
+        topographic inclination of the basin plain
+    
+    slope_basin_break: float, optional
+        location of slope-basin break point
+
+    canyon_basin_break: float, optional
+        location of canyon-basin break point. This value must be larger than slope-basin break point
+    
+    canyon_center: float, optional
+        location of center of the canyon
+    
+    canyon_half_width: float, optional
+        half width of the canyon
+
+    canyon: String, optional
+        Style of the canyon. 'parabola' or 'V' can be chosen.
+    
+    noise: float, optional
+        Range of random noise to be added on generated topography
+
+    nested_region: list, optional
+        [xmin, xmax, ymin, ymax] of the region of interest in the parent grid
+    
+    child_grid_spacing: float, optional
+        grid spacing of the child grid [m]
+    
+    Returns
+    ----------------------
+
+    parent_grid: RasterModelGrid
+        a parent grid object
+    
     child_grid: RasterModelGrid
-       a child grid object
+        a child grid object
     """
 
     # create parent grid
