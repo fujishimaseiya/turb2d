@@ -158,10 +158,10 @@ class TurbidityCurrent2D(Component):
         C_init=0.0,
         gamma=0.35,
         la=0.01,
+        suspension=True,
         water_entrainment=True,
         water_detrainment=True,
         detrainment_coef=1.0,
-        suspension=True,
         sed_entrainment_func="GP1991field",
         no_erosion=True,
         bedload_transport=True,
@@ -170,6 +170,7 @@ class TurbidityCurrent2D(Component):
         alpha_4eq = 0.1,
         p_gp1991 = 0.1,
         flow_type = "surge",
+        nesting=False,
         **kwds
     ):
         """Create a component of turbidity current
@@ -178,6 +179,12 @@ class TurbidityCurrent2D(Component):
         ----------
         grid: RasterModelGrid
             A landlab grid.
+        inlet: int, optional
+            Inlet node id.
+        inlet_link: int, optional
+            Inlet link id.
+        config_path: string, optional
+            Path to the configuration file of calculation.
         h_init: float, optional
             Thickness of initial thin layer of flow to prevent divide by zero
             errors(m).
@@ -222,6 +229,10 @@ class TurbidityCurrent2D(Component):
             turn on the function for entrainment/settling of suspension
         water_entrainment: boolean, optional
             turn on the function for ambient water entrainment
+        water_detrainment: boolean, optional
+            turn on the function for water detrainment
+        detrainment_coef: float, optional
+            Coefficient for water detrainment
         sed_entrainment_func: string, optional
             Choose the function to be used for sediment entrainment. Default
             is 'GP1991field', and other options are: 'GP1991exp', 'vanRijn1984'
@@ -234,6 +245,14 @@ class TurbidityCurrent2D(Component):
         model: string, optional
             Choose "3eq" or "4eq" for the three or four equation model of Parker
             (1986)
+        alpha_4eq: float, optional
+            Coefficient alpha for the four equation model
+        p_gp1991: float, optional
+            Coefficient p for the sediment entrainment function based on Garcia and Parker (1991)
+        flow_type: string, optional
+            Choose "surge" or "current" for the type of flow
+        nesting: bool, optional
+            If True, the model is used for nested grid
         """
         super(TurbidityCurrent2D, self).__init__(grid, **kwds)
 
@@ -284,6 +303,7 @@ class TurbidityCurrent2D(Component):
             self.flow_type = flow_type
             self.inlet = inlet
             self.inlet_link = inlet_link
+            self.nesting = nesting
 
         else:
             with open(config_path) as yml:
@@ -332,7 +352,8 @@ class TurbidityCurrent2D(Component):
             self.config = config
             self.inlet = inlet
             self.inlet_link = inlet_link
-
+            self.nesting = nesting
+                
         # Now setting up fields at nodes and links
         try:
             self.eta = grid.add_zeros(
@@ -526,6 +547,14 @@ class TurbidityCurrent2D(Component):
             self.Kh = grid.at_link["flow__TKE"]
 
         try:
+            self.Kh_node = grid.add_zeros(
+                "flow__TKE_at_node", at="node", units=self._var_units["flow__TKE"]
+            )
+        except FieldError:
+            # Field was already set
+            self.Kh_node = grid.at_node["flow__TKE_at_node"]
+
+        try:
             self.u_node = grid.add_zeros(
                 "flow__horizontal_velocity_at_node",
                 at="node",
@@ -702,7 +731,7 @@ class TurbidityCurrent2D(Component):
         # self.Ch = self.C * self.h
         self.u_node = np.zeros(grid.number_of_nodes)
         self.v_node = np.zeros(grid.number_of_nodes)
-        self.Kh_node = np.zeros(grid.number_of_nodes)
+        # self.Kh_node = np.zeros(grid.number_of_nodes)
         self.h_link = np.zeros(grid.number_of_links)
         self.Ch_link = np.zeros(grid.number_of_links)
         self.Ch_link_i = np.zeros([self.number_gclass, grid.number_of_links])
@@ -1014,6 +1043,8 @@ class TurbidityCurrent2D(Component):
             U_node=self.U_node,
             Cf_link=self.Cf_link,
             Cf_node=self.Cf_node,
+            Kh=self.Kh,
+            Kh_node=self.Kh_node,
         )
         self.update_boundary_conditions(
             h=self.h,
@@ -2645,6 +2676,7 @@ class TurbidityCurrent2D(Component):
             self.Kh[:] = self.Kh_temp[:]
             self.dKhdx[:] = self.dKhdx_temp[:]
             self.dKhdy[:] = self.dKhdy_temp[:]
+            map_links_to_nodes(self, Kh=self.Kh, Kh_node=self.Kh_node)
 
         # update boundary conditions
         self.update_boundary_conditions(
@@ -2728,7 +2760,8 @@ class TurbidityCurrent2D(Component):
             "Richardson_number",
             "Densimetric_Froude_number",
             "Ch",
-            "composite_velocity"
+            "composite_velocity",
+            "flow__TKE_at_node"
         ]
         # add sediment concentration of each grain size class
         variable_names.extend(
