@@ -12,7 +12,6 @@ from decimal import Decimal
 import os
 import yaml
 import rasterio
-from pykrige.ok import OrdinaryKriging
 from scipy.interpolate import LinearNDInterpolator
 
 def create_topography(
@@ -249,10 +248,10 @@ def create_nested_grid(config_file=None,
         xmin, xmax, ymin, ymax = nested_region
 
     # Initialize the child grid
-    lgrids = (xmax - xmin) / child_grid_spacing
-    wgrids = (ymax - ymin) / child_grid_spacing
-    length = (xmax - xmin)
-    width = (ymax - ymin)
+    lgrids = (ymax - ymin) / child_grid_spacing
+    wgrids = (xmax - xmin) / child_grid_spacing
+    length = (ymax - ymin)
+    width = (xmax - xmin)
     child_grid_length = Decimal(str(length))
     child_grid_width = Decimal(str(width))
     child_grid_spacing = Decimal(str(child_grid_spacing))
@@ -287,6 +286,62 @@ def create_nested_grid(config_file=None,
     child_grid.at_node["topographic__elevation"] = child_topo
 
     return parent_grid, child_grid
+
+def create_child_grid_from_npy(config_file=None, parent_grid_file=None, parent_spacing=0.01, nested_region=[0.5, 1.5, 0.5, 1.5], child_grid_spacing=0.01):
+    # open configuration file
+    if config_file is not None:
+        with open(config_file) as yml:
+            config = yaml.safe_load(yml)
+        child_grid_spacing = config['grid_param']['child_grid_spacing']
+        xmin = config['grid_param']['nested_region_xmin']
+        xmax = config['grid_param']['nested_region_xmax']
+        ymin = config['grid_param']['nested_region_ymin']
+        ymax = config['grid_param']['nested_region_ymax']
+    else:
+        # Get indices of the region of interest
+        xmin, xmax, ymin, ymax = nested_region
+
+    parent_grid = create_topography_from_npy(filename=parent_grid_file, spacing=parent_spacing)
+
+    # Initialize the child grid
+    lgrids = (ymax - ymin) / child_grid_spacing
+    wgrids = (xmax - xmin) / child_grid_spacing
+    length = (ymax - ymin)
+    width = (xmax - xmin)
+    child_grid_length = Decimal(str(length))
+    child_grid_width = Decimal(str(width))
+    child_grid_spacing = Decimal(str(child_grid_spacing))
+    lgrids = child_grid_length / child_grid_spacing
+    wgrids = child_grid_width / child_grid_spacing
+    child_grid = RasterModelGrid(shape=(lgrids+1, wgrids+1), xy_spacing=[child_grid_spacing, child_grid_spacing], xy_of_lower_left=[xmin, ymin])
+    
+    # Initialize fields of the child grid
+    child_grid.add_zeros("flow__depth", at="node")
+    child_grid.add_zeros("topographic__elevation", at="node")
+    child_grid.add_zeros("flow__horizontal_velocity_at_node", at="node")
+    child_grid.add_zeros("flow__vertical_velocity_at_node", at="node")
+    child_grid.add_zeros("flow__horizontal_velocity", at="link")
+    child_grid.add_zeros("flow__vertical_velocity", at="link")
+    child_grid.add_zeros("bed__thickness", at="node")
+
+    # Extract topographic elevation from the parent grid
+    nested_region_idx = np.where(
+                                (parent_grid.node_x >= xmin) & 
+                                (parent_grid.node_x <= xmax) & 
+                                (parent_grid.node_y >= ymin) & 
+                                (parent_grid.node_y <= ymax)
+                                )
+
+    parent_topo = parent_grid.at_node["topographic__elevation"][nested_region_idx]
+    parent_x = parent_grid.node_x[nested_region_idx]
+    parent_y = parent_grid.node_y[nested_region_idx]
+
+    # Interpolate and assign topographic elevation to the child grid
+    interp = LinearNDInterpolator(list(zip(parent_x, parent_y)), parent_topo)
+    child_topo = interp(list(zip(child_grid.node_x, child_grid.node_y)))
+    child_grid.at_node["topographic__elevation"] = child_topo
+
+    return child_grid
 
 def create_init_flow_region(
     grid,
