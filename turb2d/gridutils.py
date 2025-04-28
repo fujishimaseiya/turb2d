@@ -1078,7 +1078,6 @@ def extract_boundary_condition(parent_grid_file, tc_child, nested_region):
 
     # calculate boundary conditions at edge nodes and edge links for v
     tc_child.v[top_boundary_nodes_child[::5]] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_up_boundary_nodes_parent]
-    # tc_child.v[[top_boundary_nodes_child][::5] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_up_boundary_nodes_parent]
     tc_child.v_node[top_boundary_nodes_child], tc_child.v[top_edge_horizontal_links_child] = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
                                                                                                 y=tc_child.v_node[top_boundary_nodes_child[::5]], 
                                                                                                 x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
@@ -1156,7 +1155,7 @@ def extract_boundary_condition(parent_grid_file, tc_child, nested_region):
                                                                                         x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
                                                                                         method='linear')
         
-        tc_child.Ch_i[i, :][bottom_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_left_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_left_boundary_nodes_parent]
+        tc_child.Ch_i[i, :][left_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_left_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_left_boundary_nodes_parent]
         tc_child.Ch_i[i, :][left_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
                                                                                       y=tc_child.Ch_i[i, :][left_boundary_nodes_child[::5]], 
                                                                                       x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
