@@ -13,6 +13,7 @@ import os
 import yaml
 import rasterio
 from scipy.interpolate import LinearNDInterpolator
+from fractions import Fraction
 
 def create_topography(
     config_file=None,
@@ -248,8 +249,12 @@ def create_nested_grid(config_file=None,
         xmin, xmax, ymin, ymax = nested_region
 
     # Initialize the child grid
-    lgrids = (ymax - ymin) / child_grid_spacing
-    wgrids = (xmax - xmin) / child_grid_spacing
+    # lgrids = (ymax - ymin) / child_grid_spacing
+    # wgrids = (xmax - xmin) / child_grid_spacing
+    ymax = Decimal(str(ymax))
+    ymin = Decimal(str(ymin))
+    xmax = Decimal(str(xmax))
+    xmin = Decimal(str(xmin))
     length = (ymax - ymin)
     width = (xmax - xmin)
     child_grid_length = Decimal(str(length))
@@ -270,10 +275,10 @@ def create_nested_grid(config_file=None,
 
     # Extract topographic elevation from the parent grid
     nested_region_idx = np.where(
-                                (parent_grid.node_x >= xmin) & 
-                                (parent_grid.node_x <= xmax) & 
-                                (parent_grid.node_y >= ymin) & 
-                                (parent_grid.node_y <= ymax)
+                                (parent_grid.node_x >= float(xmin)) & 
+                                (parent_grid.node_x <= float(xmax)) & 
+                                (parent_grid.node_y >= float(ymin)) & 
+                                (parent_grid.node_y <= float(ymax))
                                 )
 
     parent_topo = parent_grid.at_node["topographic__elevation"][nested_region_idx]
@@ -304,8 +309,10 @@ def create_child_grid_from_npy(config_file=None, parent_grid_file=None, parent_s
     parent_grid = create_topography_from_npy(filename=parent_grid_file, spacing=parent_spacing)
 
     # Initialize the child grid
-    lgrids = (ymax - ymin) / child_grid_spacing
-    wgrids = (xmax - xmin) / child_grid_spacing
+    ymax = Decimal(str(ymax))
+    ymin = Decimal(str(ymin))
+    xmax = Decimal(str(xmax))
+    xmin = Decimal(str(xmin))
     length = (ymax - ymin)
     width = (xmax - xmin)
     child_grid_length = Decimal(str(length))
@@ -326,10 +333,10 @@ def create_child_grid_from_npy(config_file=None, parent_grid_file=None, parent_s
 
     # Extract topographic elevation from the parent grid
     nested_region_idx = np.where(
-                                (parent_grid.node_x >= xmin) & 
-                                (parent_grid.node_x <= xmax) & 
-                                (parent_grid.node_y >= ymin) & 
-                                (parent_grid.node_y <= ymax)
+                                (parent_grid.node_x >= float(xmin)) & 
+                                (parent_grid.node_x <= float(xmax)) & 
+                                (parent_grid.node_y >= float(ymin)) & 
+                                (parent_grid.node_y <= float(ymax))
                                 )
 
     parent_topo = parent_grid.at_node["topographic__elevation"][nested_region_idx]
