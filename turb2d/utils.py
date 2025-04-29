@@ -128,6 +128,25 @@ def create_topography(
         inside = np.where(canyon_elev < grid.at_node["topographic__elevation"])
         grid.at_node["topographic__elevation"][inside] = canyon_elev[inside]
 
+    elif canyon == "rectangular":
+        # Set canyon (rectangular shape with constant width)
+        d0 = slope_inside * (canyon_basin_break - slope_basin_break)
+        d = slope_inside * (grid.node_y - canyon_basin_break) - d0
+
+        # Define canyon lateral limits
+        x_min = canyon_center - canyon_half_width
+        x_max = canyon_center + canyon_half_width
+
+        # Logical mask for canyon area
+        canyon_mask = (grid.node_x >= x_min) & (grid.node_x <= x_max)
+        # Elevation inside canyon region
+        canyon_elev = d
+
+        # Apply canyon elevation where it is lower than current surface
+        current_elev = grid.at_node["topographic__elevation"]
+        new_elev = np.where(canyon_mask, canyon_elev, current_elev)
+        grid.at_node["topographic__elevation"] = np.minimum(current_elev, new_elev)
+
     # set basin
     basin_height = (grid.node_y - slope_basin_break) * slope_basin
     basin_region = grid.at_node["topographic__elevation"] < basin_height
