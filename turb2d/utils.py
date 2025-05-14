@@ -351,11 +351,22 @@ def create_child_grid_from_npy(config_file=None, parent_grid_file=None, parent_s
     child_grid.add_zeros("bed__thickness", at="node")
 
     # Extract topographic elevation from the parent grid
+    # find the nearest nodes closest to xmin, xmax, ymin, ymax
+    xmin_node = np.argmin(np.abs(parent_grid.node_x - float(xmin)))
+    xmax_node = np.argmin(np.abs(parent_grid.node_x - float(xmax)))
+    ymin_node = np.argmin(np.abs(parent_grid.node_y - float(ymin)))
+    ymax_node = np.argmin(np.abs(parent_grid.node_y - float(ymax)))
+    # get the node values of xmin, xmax, ymin, ymax
+    xmin_node_value = parent_grid.node_x[xmin_node]
+    xmax_node_value = parent_grid.node_x[xmax_node]
+    ymin_node_value = parent_grid.node_y[ymin_node]
+    ymax_node_value = parent_grid.node_y[ymax_node]
+
     nested_region_idx = np.where(
-                                (parent_grid.node_x >= float(xmin)) & 
-                                (parent_grid.node_x <= float(xmax)) & 
-                                (parent_grid.node_y >= float(ymin)) & 
-                                (parent_grid.node_y <= float(ymax))
+                                (parent_grid.node_x >= float(xmin_node_value)) & 
+                                (parent_grid.node_x <= float(xmax_node_value)) & 
+                                (parent_grid.node_y >= float(ymin_node_value)) & 
+                                (parent_grid.node_y <= float(ymax_node_value))
                                 )
 
     parent_topo = parent_grid.at_node["topographic__elevation"][nested_region_idx]
