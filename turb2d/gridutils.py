@@ -994,12 +994,6 @@ def extract_boundary_condition(parent_grid_file, tc_child, nested_region):
     # Extract nested region indices
     xmin, xmax, ymin, ymax = nested_region
     parent_grid = nc_to_landlab(parent_grid_file)
-    nested_region_idx = np.where(
-                            (parent_grid.node_x >= xmin) & 
-                            (parent_grid.node_x <= xmax) & 
-                            (parent_grid.node_y >= ymin) & 
-                            (parent_grid.node_y <= ymax)
-                            )
     
     # get indices of nested boundary nodes in the parent grid
     nested_right_boundary_nodes_parent = np.where((parent_grid.node_x == xmax) &
@@ -1032,22 +1026,22 @@ def extract_boundary_condition(parent_grid_file, tc_child, nested_region):
     right_edge_vertical_links_child = right_edge_vertical_ids(tc_child.grid.shape)
 
     # calculate boundary conditions at edge nodes and edge links for u
-    tc_child.u_node[top_boundary_nodes_child[::5]] = parent_grid.at_node['flow__vertical_velocity_at_node'][nested_up_boundary_nodes_parent]
+    tc_child.u_node[top_boundary_nodes_child[::5]] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_up_boundary_nodes_parent]
     tc_child.u_node[top_boundary_nodes_child], tc_child.u[top_edge_horizontal_links_child] = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
                                                                                                 y=tc_child.u_node[top_boundary_nodes_child[::5]], 
                                                                                                 x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
                                                                                                 method='linear')
-    tc_child.u_node[bottom_boundary_nodes_child[::5]] = parent_grid.at_node['flow__vertical_velocity_at_node'][nested_down_boundary_nodes_parent]
+    tc_child.u_node[bottom_boundary_nodes_child[::5]] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_down_boundary_nodes_parent]
     tc_child.u_node[bottom_boundary_nodes_child], tc_child.u[bottom_edge_horizontal_links_child] = interp_boundary_condition(x=np.arange(0, bottom_boundary_nodes_child.size, 5), 
                                                                                                 y=tc_child.u_node[bottom_boundary_nodes_child[::5]], 
                                                                                                 x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
                                                                                                 method='linear')
-    tc_child.u_node[left_boundary_nodes_child[::5]] = parent_grid.at_node['flow__vertical_velocity_at_node'][nested_left_boundary_nodes_parent]
+    tc_child.u_node[left_boundary_nodes_child[::5]] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_left_boundary_nodes_parent]
     tc_child.u_node[left_boundary_nodes_child], tc_child.u[left_edge_vertical_links_child] = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
                                                                                                 y=tc_child.u_node[left_boundary_nodes_child[::5]], 
                                                                                                 x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
                                                                                                 method='linear')
-    tc_child.u_node[right_boundary_nodes_child[::5]] = parent_grid.at_node['flow__vertical_velocity_at_node'][nested_right_boundary_nodes_parent]
+    tc_child.u_node[right_boundary_nodes_child[::5]] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_right_boundary_nodes_parent]
     tc_child.u_node[right_boundary_nodes_child], tc_child.u[right_edge_vertical_links_child] = interp_boundary_condition(x=np.arange(0, right_boundary_nodes_child.size, 5), 
                                                                                                 y=tc_child.u_node[right_boundary_nodes_child[::5]], 
                                                                                                 x_new=np.arange(0, right_boundary_nodes_child.size-0.5, 0.5), 
@@ -1068,44 +1062,44 @@ def extract_boundary_condition(parent_grid_file, tc_child, nested_region):
     nodes_at_right_anchor_link = tc_child.grid.nodes_at_link[right_edge_horiz_anchor_links]
     # calculate boundary conditions at anchor links
     # top edge
-    tc_child.u[top_edge_vert_anchor_links] = np.mean(tc_child.u_node[nodes_at_top_anchor_link], axis=1)
-    # bottom edge
-    tc_child.u[bottom_edge_vert_anchor_links] = np.mean(tc_child.u_node[nodes_at_bottom_anchor_link], axis=1)
-    # left edge
-    tc_child.u[left_edge_horiz_anchor_links] = np.mean(tc_child.u_node[nodes_at_left_anchor_link], axis=1)
-    # right edge
-    tc_child.u[right_edge_horiz_anchor_links] = np.mean(tc_child.u_node[nodes_at_right_anchor_link], axis=1)
+    # tc_child.u[top_edge_vert_anchor_links] = np.mean(tc_child.u_node[nodes_at_top_anchor_link], axis=1)
+    # # bottom edge
+    # tc_child.u[bottom_edge_vert_anchor_links] = np.mean(tc_child.u_node[nodes_at_bottom_anchor_link], axis=1)
+    # # left edge
+    # tc_child.u[left_edge_horiz_anchor_links] = np.mean(tc_child.u_node[nodes_at_left_anchor_link], axis=1)
+    # # right edge
+    # tc_child.u[right_edge_horiz_anchor_links] = np.mean(tc_child.u_node[nodes_at_right_anchor_link], axis=1)
 
     # calculate boundary conditions at edge nodes and edge links for v
-    tc_child.v[top_boundary_nodes_child[::5]] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_up_boundary_nodes_parent]
+    tc_child.v[top_boundary_nodes_child[::5]] = parent_grid.at_node['flow__vertical_velocity_at_node'][nested_up_boundary_nodes_parent]
     tc_child.v_node[top_boundary_nodes_child], tc_child.v[top_edge_horizontal_links_child] = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
                                                                                                 y=tc_child.v_node[top_boundary_nodes_child[::5]], 
                                                                                                 x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
                                                                                                 method='linear')
-    tc_child.v_node[bottom_boundary_nodes_child[::5]] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_down_boundary_nodes_parent]
+    tc_child.v_node[bottom_boundary_nodes_child[::5]] = parent_grid.at_node['flow__vertical_velocity_at_node'][nested_down_boundary_nodes_parent]
     tc_child.v_node[bottom_boundary_nodes_child], tc_child.v[bottom_edge_horizontal_links_child] = interp_boundary_condition(x=np.arange(0, bottom_boundary_nodes_child.size, 5), 
                                                                                                 y=tc_child.v_node[bottom_boundary_nodes_child[::5]], 
                                                                                                 x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
                                                                                                 method='linear')
-    tc_child.v_node[left_boundary_nodes_child[::5]] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_left_boundary_nodes_parent]
+    tc_child.v_node[left_boundary_nodes_child[::5]] = parent_grid.at_node['flow__vertical_velocity_at_node'][nested_left_boundary_nodes_parent]
     tc_child.v_node[left_boundary_nodes_child], tc_child.v[left_edge_vertical_links_child] = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
-                                                                                                y=tc_child.u_node[left_boundary_nodes_child[::5]], 
+                                                                                                y=tc_child.v_node[left_boundary_nodes_child[::5]], 
                                                                                                 x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
                                                                                                 method='linear')
-    tc_child.v_node[right_boundary_nodes_child[::5]] = parent_grid.at_node['flow__horizontal_velocity_at_node'][nested_right_boundary_nodes_parent]
+    tc_child.v_node[right_boundary_nodes_child[::5]] = parent_grid.at_node['flow__vertical_velocity_at_node'][nested_right_boundary_nodes_parent]
     tc_child.v_node[right_boundary_nodes_child], tc_child.v[right_edge_vertical_links_child] = interp_boundary_condition(x=np.arange(0, right_boundary_nodes_child.size, 5), 
                                                                                                 y=tc_child.v_node[right_boundary_nodes_child[::5]], 
                                                                                                 x_new=np.arange(0, right_boundary_nodes_child.size-0.5, 0.5), 
                                                                                                 method='linear')
     # calculate boundary conditions at anchor links
     # top edge
-    tc_child.v[top_edge_vert_anchor_links] = np.mean(tc_child.v_node[nodes_at_top_anchor_link], axis=1)
-    # bottom edge
-    tc_child.v[bottom_edge_vert_anchor_links] = np.mean(tc_child.v_node[nodes_at_bottom_anchor_link], axis=1)
-    # left edge
-    tc_child.v[left_edge_horiz_anchor_links] = np.mean(tc_child.v_node[nodes_at_left_anchor_link], axis=1)
-    # right edge
-    tc_child.v[right_edge_horiz_anchor_links] = np.mean(tc_child.v_node[nodes_at_right_anchor_link], axis=1)
+    # tc_child.v[top_edge_vert_anchor_links] = np.mean(tc_child.v_node[nodes_at_top_anchor_link], axis=1)
+    # # bottom edge
+    # tc_child.v[bottom_edge_vert_anchor_links] = np.mean(tc_child.v_node[nodes_at_bottom_anchor_link], axis=1)
+    # # left edge
+    # tc_child.v[left_edge_horiz_anchor_links] = np.mean(tc_child.v_node[nodes_at_left_anchor_link], axis=1)
+    # # right edge
+    # tc_child.v[right_edge_horiz_anchor_links] = np.mean(tc_child.v_node[nodes_at_right_anchor_link], axis=1)
 
     # calculate boundary conditions at edge nodes and edge links for h
     tc_child.h[top_boundary_nodes_child[::5]] = parent_grid.at_node['flow__depth'][nested_up_boundary_nodes_parent]
@@ -1133,44 +1127,44 @@ def extract_boundary_condition(parent_grid_file, tc_child, nested_region):
     # calculate boundary conditions at edge nodes and edge links for Ch_i
     C_name_list = [f'flow__sediment_concentration_{i}' for i in range(tc_child.Ch_i.shape[0])]
     for i in range(len(C_name_list)):
-        tc_child.Ch_i[i, :][top_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_up_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_up_boundary_nodes_parent]
-        tc_child.Ch_i[i, :][top_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
-                                                                                     y=tc_child.Ch_i[i, :][top_boundary_nodes_child[::5]], 
-                                                                                     x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
-                                                                                     method='linear')
+        # tc_child.Ch_i[i, :][top_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_up_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_up_boundary_nodes_parent]
+        # tc_child.Ch_i[i, :][top_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
+        #                                                                              y=tc_child.Ch_i[i, :][top_boundary_nodes_child[::5]], 
+        #                                                                              x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
+        #                                                                              method='linear')
         tc_child.C_i[i, :][top_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_up_boundary_nodes_parent]
         tc_child.C_i[i, :][top_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
                                                                                      y=tc_child.C_i[i, :][top_boundary_nodes_child[::5]], 
                                                                                      x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
                                                                                      method='linear')
         
-        tc_child.Ch_i[i, :][bottom_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_down_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_down_boundary_nodes_parent]
-        tc_child.Ch_i[i, :][bottom_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, bottom_boundary_nodes_child.size, 5), 
-                                                                                        y=tc_child.Ch_i[i, :][bottom_boundary_nodes_child[::5]], 
-                                                                                        x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
-                                                                                        method='linear')
+        # tc_child.Ch_i[i, :][bottom_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_down_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_down_boundary_nodes_parent]
+        # tc_child.Ch_i[i, :][bottom_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, bottom_boundary_nodes_child.size, 5), 
+        #                                                                                 y=tc_child.Ch_i[i, :][bottom_boundary_nodes_child[::5]], 
+        #                                                                                 x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
+        #                                                                                 method='linear')
         tc_child.C_i[i, :][bottom_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_down_boundary_nodes_parent]
         tc_child.C_i[i, :][bottom_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, bottom_boundary_nodes_child.size, 5), 
                                                                                         y=tc_child.C_i[i, :][bottom_boundary_nodes_child[::5]], 
                                                                                         x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
                                                                                         method='linear')
         
-        tc_child.Ch_i[i, :][left_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_left_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_left_boundary_nodes_parent]
-        tc_child.Ch_i[i, :][left_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
-                                                                                      y=tc_child.Ch_i[i, :][left_boundary_nodes_child[::5]], 
-                                                                                      x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
-                                                                                      method='linear')
+        # tc_child.Ch_i[i, :][left_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_left_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_left_boundary_nodes_parent]
+        # tc_child.Ch_i[i, :][left_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
+        #                                                                               y=tc_child.Ch_i[i, :][left_boundary_nodes_child[::5]], 
+        #                                                                               x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
+        #                                                                               method='linear')
         tc_child.C_i[i, :][left_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_left_boundary_nodes_parent]
         tc_child.C_i[i, :][left_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
                                                                                      y=tc_child.C_i[i, :][left_boundary_nodes_child[::5]], 
                                                                                      x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
                                                                                      method='linear')
         
-        tc_child.Ch_i[i, :][right_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_right_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_right_boundary_nodes_parent]
-        tc_child.Ch_i[i, :][right_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, right_boundary_nodes_child.size, 5), 
-                                                                                       y=tc_child.Ch_i[i, :][right_boundary_nodes_child[::5]], 
-                                                                                       x_new=np.arange(0, right_boundary_nodes_child.size-0.5, 0.5), 
-                                                                                       method='linear')
+        # tc_child.Ch_i[i, :][right_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_right_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_right_boundary_nodes_parent]
+        # tc_child.Ch_i[i, :][right_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, right_boundary_nodes_child.size, 5), 
+        #                                                                                y=tc_child.Ch_i[i, :][right_boundary_nodes_child[::5]], 
+        #                                                                                x_new=np.arange(0, right_boundary_nodes_child.size-0.5, 0.5), 
+        #                                                                                method='linear')
         tc_child.C_i[i, :][right_boundary_nodes_child[::5]] = parent_grid.at_node[C_name_list[i]][nested_right_boundary_nodes_parent]
         tc_child.C_i[i, :][right_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, right_boundary_nodes_child.size, 5), 
                                                                                      y=tc_child.C_i[i, :][right_boundary_nodes_child[::5]], 
@@ -1179,30 +1173,77 @@ def extract_boundary_condition(parent_grid_file, tc_child, nested_region):
     # NOTE: Ch_link does not need to be calculated because update_boundary_condition runs at the start of run_one_step
 
     # calculate boundary conditions at edge nodes and edge links for Ch
-    tc_child.Ch[top_boundary_nodes_child[::5]] = parent_grid.at_node['flow__sediment_concentration_total'][nested_up_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_up_boundary_nodes_parent]
-    tc_child.Ch[top_boundary_nodes_child],_ = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
-                                                                                   y=tc_child.Ch[top_boundary_nodes_child[::5]], 
-                                                                                   x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
+    # tc_child.Ch[top_boundary_nodes_child[::5]] = parent_grid.at_node['flow__sediment_concentration_total'][nested_up_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_up_boundary_nodes_parent]
+    # tc_child.Ch[top_boundary_nodes_child],_ = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
+    #                                                                                y=tc_child.Ch[top_boundary_nodes_child[::5]], 
+    #                                                                                x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
+    #                                                                                method='linear')
+    # tc_child.Ch[bottom_boundary_nodes_child[::5]] = parent_grid.at_node['flow__sediment_concentration_total'][nested_down_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_down_boundary_nodes_parent]
+    # tc_child.Ch[bottom_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, bottom_boundary_nodes_child.size, 5), 
+    #                                                                             y=tc_child.Ch[bottom_boundary_nodes_child[::5]], 
+    #                                                                             x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
+    #                                                                             method='linear')
+    # tc_child.Ch[left_boundary_nodes_child[::5]] = parent_grid.at_node['flow__sediment_concentration_total'][nested_left_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_left_boundary_nodes_parent]
+    # tc_child.Ch[left_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
+    #                                                                                  y=tc_child.Ch[left_boundary_nodes_child[::5]], 
+    #                                                                                  x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
+    #                                                                                  method='linear')
+    # tc_child.Ch[right_boundary_nodes_child[::5]] = parent_grid.at_node['flow__sediment_concentration_total'][nested_right_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_right_boundary_nodes_parent]
+    # tc_child.Ch[right_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, right_boundary_nodes_child.size, 5), 
+    #                                                                       y=tc_child.Ch[right_boundary_nodes_child[::5]], 
+    #                                                                       x_new=np.arange(0, right_boundary_nodes_child.size-0.5, 0.5), 
+    #                                                                       method='linear')
+    
+    # calculate boundary conditions at egde nodes for sediment volume per unit area
+    sed_name_list = [f'bed__sediment_volume_per_unit_area_{i}' for i in range(tc_child.bed_thick_i.shape[0])]
+    for i in range(len(sed_name_list)):
+        tc_child.bed_thick_i[i, :][top_boundary_nodes_child[::5]] = parent_grid.at_node[sed_name_list[i]][nested_up_boundary_nodes_parent]
+        tc_child.bed_thick_i[i, :][top_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
+                                                                                            y=tc_child.bed_thick_i[i, :][top_boundary_nodes_child[::5]], 
+                                                                                            x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
+                                                                                            method='linear')
+        tc_child.bed_thick_i[i, :][bottom_boundary_nodes_child[::5]] = parent_grid.at_node[sed_name_list[i]][nested_down_boundary_nodes_parent]
+        tc_child.bed_thick_i[i, :][bottom_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, bottom_boundary_nodes_child.size, 5), 
+                                                                                               y=tc_child.bed_thick_i[i, :][bottom_boundary_nodes_child[::5]], 
+                                                                                               x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
+                                                                                               method='linear')
+        tc_child.bed_thick_i[i, :][left_boundary_nodes_child[::5]] = parent_grid.at_node[sed_name_list[i]][nested_left_boundary_nodes_parent]
+        tc_child.bed_thick_i[i, :][left_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
+                                                                                             y=tc_child.bed_thick_i[i, :][left_boundary_nodes_child[::5]], 
+                                                                                             x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
+                                                                                             method='linear')
+        
+        tc_child.bed_thick_i[i, :][right_boundary_nodes_child[::5]] = parent_grid.at_node[sed_name_list[i]][nested_right_boundary_nodes_parent]
+        tc_child.bed_thick_i[i, :][right_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, right_boundary_nodes_child.size, 5), 
+                                                                                               y=tc_child.bed_thick_i[i, :][right_boundary_nodes_child[::5]], 
+                                                                                               x_new=np.arange(0, right_boundary_nodes_child.size-0.5, 0.5), 
+                                                                                               method='linear')
+    # calculate boundary conditions at edge nodes for bed thickness
+    tc_child.bed_thick[top_boundary_nodes_child[::5]] = parent_grid.at_node['bed__thickness'][nested_up_boundary_nodes_parent]
+    tc_child.bed_thick[top_boundary_nodes_child],_ = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
+                                                                               y=tc_child.bed_thick[top_boundary_nodes_child[::5]], 
+                                                                               x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
+                                                                               method='linear')
+    tc_child.bed_thick[bottom_boundary_nodes_child[::5]] = parent_grid.at_node['bed__thickness'][nested_down_boundary_nodes_parent]
+    tc_child.bed_thick[bottom_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, bottom_boundary_nodes_child.size, 5), 
+                                                                                   y=tc_child.bed_thick[bottom_boundary_nodes_child[::5]], 
+                                                                                   x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
                                                                                    method='linear')
-    tc_child.Ch[bottom_boundary_nodes_child[::5]] = parent_grid.at_node['flow__sediment_concentration_total'][nested_down_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_down_boundary_nodes_parent]
-    tc_child.Ch[bottom_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, bottom_boundary_nodes_child.size, 5), 
-                                                                                y=tc_child.Ch[bottom_boundary_nodes_child[::5]], 
-                                                                                x_new=np.arange(0, bottom_boundary_nodes_child.size-0.5, 0.5), 
-                                                                                method='linear')
-    tc_child.Ch[left_boundary_nodes_child[::5]] = parent_grid.at_node['flow__sediment_concentration_total'][nested_left_boundary_nodes_parent]*parent_grid.at_node['flow__depth'][nested_left_boundary_nodes_parent]
-    tc_child.Ch[left_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
-                                                                                     y=tc_child.Ch[left_boundary_nodes_child[::5]], 
-                                                                                     x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
-                                                                                     method='linear')
-    tc_child.Ch[right_boundary_nodes_child[::5]] = parent_grid.at_node['flow__depth'][nested_right_boundary_nodes_parent]*parent_grid.at_node['flow__sediment_concentration_total'][nested_right_boundary_nodes_parent]
-    tc_child.Ch[right_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, right_boundary_nodes_child.size, 5), 
-                                                                          y=tc_child.Ch[right_boundary_nodes_child[::5]], 
-                                                                          x_new=np.arange(0, right_boundary_nodes_child.size-0.5, 0.5), 
-                                                                          method='linear')
+    tc_child.bed_thick[left_boundary_nodes_child[::5]] = parent_grid.at_node['bed__thickness'][nested_left_boundary_nodes_parent]
+    tc_child.bed_thick[left_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, left_boundary_nodes_child.size, 5), 
+                                                                                 y=tc_child.bed_thick[left_boundary_nodes_child[::5]], 
+                                                                                 x_new=np.arange(0, left_boundary_nodes_child.size-0.5, 0.5), 
+                                                                                 method='linear')
+    tc_child.bed_thick[right_boundary_nodes_child[::5]] = parent_grid.at_node['bed__thickness'][nested_right_boundary_nodes_parent]
+    tc_child.bed_thick[right_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, right_boundary_nodes_child.size, 5), 
+                                                                                  y=tc_child.bed_thick[right_boundary_nodes_child[::5]], 
+                                                                                  x_new=np.arange(0, right_boundary_nodes_child.size-0.5, 0.5), 
+                                                                                  method='linear')
+    
     if tc_child.model == '4eq':
         # calculate boundary conditions at edge nodes and edge links for Kh
         tc_child.Kh_node[top_boundary_nodes_child[::5]] = parent_grid.at_node['flow__TKE_at_node'][nested_up_boundary_nodes_parent]
-        tc_child.Kh_node[top_boundary_nodes_child],_ = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
+        tc_child.Kh_node[top_boundary_nodes_child], _ = interp_boundary_condition(x=np.arange(0, top_boundary_nodes_child.size, 5), 
                                                                                  y=tc_child.Kh_node[top_boundary_nodes_child[::5]], 
                                                                                  x_new=np.arange(0, top_boundary_nodes_child.size-0.5, 0.5), 
                                                                                  method='linear')
@@ -1221,16 +1262,11 @@ def extract_boundary_condition(parent_grid_file, tc_child, nested_region):
                                                                                     y=tc_child.Kh_node[right_boundary_nodes_child[::5]], 
                                                                                     x_new=np.arange(0, right_boundary_nodes_child.size-0.5, 0.5), 
                                                                                     method='linear')
-        # calculate boundary conditions at anchor links
-        # top edge
-        tc_child.Kh[top_edge_vert_anchor_links] = np.mean(tc_child.Kh_node[nodes_at_top_anchor_link], axis=1)
-        # # bottom edge
-        tc_child.Kh[bottom_edge_vert_anchor_links] = np.mean(tc_child.Kh_node[nodes_at_bottom_anchor_link], axis=1)
-        # # left edge
-        tc_child.Kh[left_edge_horiz_anchor_links] = np.mean(tc_child.Kh_node[nodes_at_left_anchor_link], axis=1)
-        # # right edge
-        tc_child.Kh[right_edge_horiz_anchor_links] = np.mean(tc_child.Kh_node[nodes_at_right_anchor_link], axis=1)
-
+        
+        tc_child.Kh[top_edge_horizontal_links_child] = tc_child.h_link[top_edge_horizontal_links_child]*tc_child.Cf*(tc_child.u[top_edge_horizontal_links_child]**2 + tc_child.v[top_edge_horizontal_links_child]**2)/tc_child.alpha_4eq
+        tc_child.Kh[bottom_edge_horizontal_links_child] = tc_child.h_link[bottom_edge_horizontal_links_child]*tc_child.Cf*(tc_child.u[bottom_edge_horizontal_links_child]**2 + tc_child.v[bottom_edge_horizontal_links_child]**2)/tc_child.alpha_4eq
+        tc_child.Kh[left_edge_vertical_links_child] = tc_child.h_link[left_edge_vertical_links_child]*tc_child.Cf*(tc_child.u[left_edge_vertical_links_child]**2 + tc_child.v[left_edge_vertical_links_child]**2)/tc_child.alpha_4eq
+        tc_child.Kh[right_edge_vertical_links_child] = tc_child.h_link[right_edge_vertical_links_child]*tc_child.Cf*(tc_child.u[right_edge_vertical_links_child]**2 + tc_child.v[right_edge_vertical_links_child]**2)/tc_child.alpha_4eq
     # set Neumann boundary conditions at nodes
     # tc_child.grid.set_status_at_node_on_edges(top=tc_child.grid.BC_NODE_IS_FIXED_GRADIENT,
     #                                           bottom=tc_child.grid.BC_NODE_IS_FIXED_GRADIENT,
