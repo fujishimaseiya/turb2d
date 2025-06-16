@@ -299,8 +299,11 @@ class RunMultiFlows():
         grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
         
         # set inlet region
-        inlet_edge = [(self.run_multi_config['grid_param']['flume_width'] - self.run_multi_config['grid_param']['inlet_width']) / 2.0, 
+        if self.run_multi_config['grid_param']['inlet_width'] is not None and self.run_multi_config['grid_param']['inlet_edge'] is None:
+            inlet_edge = [(self.run_multi_config['grid_param']['flume_width'] - self.run_multi_config['grid_param']['inlet_width']) / 2.0,
                       (self.run_multi_config['grid_param']['flume_width'] + self.run_multi_config['grid_param']['inlet_width']) / 2.0]
+        elif self.run_multi_config['grid_param']['inlet_width'] is None and self.run_multi_config['grid_param']['inlet_edge'] is not None:
+            inlet_edge = self.run_multi_config['grid_param']['inlet_edge']
 
         inlet = np.where((grid.x_of_node >= inlet_edge[0])
                                 & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == np.max(grid.y_of_node)))
