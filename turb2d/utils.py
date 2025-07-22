@@ -178,7 +178,7 @@ def create_nested_grid(config_file=None,
                        child_grid_spacing=0.01
                        ):
     """
-    Create a nested grid in a region of interest
+    Create a parent grid and child grid for nesting.
 
     Parameters
     ----------------------
@@ -236,36 +236,41 @@ def create_nested_grid(config_file=None,
     child_grid: RasterModelGrid
         a child grid object
     """
-
-    # create parent grid
-    parent_grid = create_topography(
-        config_file=config_file,
-        length=length,
-        width=width,
-        spacing=spacing,
-        slope_outside=slope_outside,
-        slope_inside=slope_inside,
-        slope_basin=slope_basin,
-        slope_basin_break=slope_basin_break,
-        canyon_basin_break=canyon_basin_break,
-        canyon_center=canyon_center,
-        canyon_half_width=canyon_half_width,
-        canyon=canyon,
-        noise=noise
-    )
-
-    # open configuration file
+        # open configuration file
     if config_file is not None:
         with open(config_file) as yml:
             config = yaml.safe_load(yml)
+        parent_grid_spacing = config['grid_param']['parent_grid_spacing']    
         child_grid_spacing = config['grid_param']['child_grid_spacing']
         xmin = config['grid_param']['nested_region_xmin']
         xmax = config['grid_param']['nested_region_xmax']
         ymin = config['grid_param']['nested_region_ymin']
         ymax = config['grid_param']['nested_region_ymax']
+        parent_grid_file = config['grid_param']['parent_grid_file']
     else:
         # Get indices of the region of interest
         xmin, xmax, ymin, ymax = nested_region
+    
+    if parent_grid_file is None:
+        # create parent grid
+        parent_grid = create_topography(
+            config_file=config_file,
+            length=length,
+            width=width,
+            spacing=spacing,
+            slope_outside=slope_outside,
+            slope_inside=slope_inside,
+            slope_basin=slope_basin,
+            slope_basin_break=slope_basin_break,
+            canyon_basin_break=canyon_basin_break,
+            canyon_center=canyon_center,
+            canyon_half_width=canyon_half_width,
+            canyon=canyon,
+            noise=noise
+        )
+    else:
+        # create parent grid from npy file
+        parent_grid = create_topography_from_npy(filename=parent_grid_file, spacing=parent_grid_spacing)
 
     # Initialize the child grid
     # lgrids = (ymax - ymin) / child_grid_spacing
@@ -292,20 +297,26 @@ def create_nested_grid(config_file=None,
     child_grid.add_zeros("flow__vertical_velocity", at="link")
     child_grid.add_zeros("bed__thickness", at="node")
 
+    # the coordinates of the parent grid are rounded to a specified number of decimal places.
+    s = str(parent_grid_spacing)
+    _, s_d = s.split('.')
+    decimal = len(s_d)
+    parent_x = round_values(parent_grid.node_x, decimals=decimal)
+    parent_y = round_values(parent_grid.node_y, decimals=decimal)
     # Extract topographic elevation from the parent grid
     nested_region_idx = np.where(
-                                (parent_grid.node_x >= float(xmin)) & 
-                                (parent_grid.node_x <= float(xmax)) & 
-                                (parent_grid.node_y >= float(ymin)) & 
-                                (parent_grid.node_y <= float(ymax))
+                                (parent_x >= float(xmin)) & 
+                                (parent_x <= float(xmax)) & 
+                                (parent_y >= float(ymin)) & 
+                                (parent_y <= float(ymax))
                                 )
 
     parent_topo = parent_grid.at_node["topographic__elevation"][nested_region_idx]
-    parent_x = parent_grid.node_x[nested_region_idx]
-    parent_y = parent_grid.node_y[nested_region_idx]
+    parent_x_nested_region = parent_grid.node_x[nested_region_idx]
+    parent_y_nested_region = parent_grid.node_y[nested_region_idx]
 
     # Interpolate and assign topographic elevation to the child grid
-    interp = LinearNDInterpolator(list(zip(parent_x, parent_y)), parent_topo)
+    interp = LinearNDInterpolator(list(zip(parent_x_nested_region, parent_y_nested_region)), parent_topo)
     child_topo = interp(list(zip(child_grid.node_x, child_grid.node_y)))
     child_grid.at_node["topographic__elevation"] = child_topo
 
@@ -553,3 +564,250 @@ def create_topography_from_npy(filename, spacing):
     grid.at_node["topographic__elevation"][grid.nodes] = topo_data
 
     return grid
+
+def initialize_grid_fields(grid, config_file):
+    """initialize fields of a landlab grid for flow parameters
+
+       Parameters
+       ----------------------
+       grid: RasterModelGrid
+          a landlab grid object to be used in TurbidityCurrent2D
+
+       config_file: String
+          path to a configuration file
+    """
+
+    with open(config_file) as yml:
+        config = yaml.safe_load(yml)
+        Ds = config['model_param']['Ds']
+
+    # check number of grain size classes
+    if type(Ds) is float or type(Ds) is np.float64:
+        num_gclass = np.array([Ds])
+    else:
+        num_gclass = np.array(Ds).reshape(
+        len(Ds), 1
+    )
+    # initialize flow parameters
+    for i in range(len(num_gclass)):
+        try:
+            grid.add_zeros("flow__sediment_concentration_{}".format(i), at="node")
+        except FieldError:
+            grid.at_node["flow__sediment_concentration_{}".format(i)][:] = 0.0
+        try:
+            grid.add_zeros("bed__sediment_volume_per_unit_area_{}".format(i), at="node")
+        except FieldError:
+            grid.at_node["bed__sediment_volume_per_unit_area_{}".format(i)][:] = 0.0
+
+    try:
+        grid.add_zeros("flow__sediment_concentration_total", at="node")
+    except FieldError:
+        grid.at_node["flow__sediment_concentration_total"][:] = 0.0
+    try:
+        grid.add_zeros("flow__depth", at="node")
+    except FieldError:
+        grid.at_node["flow__depth"][:] = 0.0
+    try:
+        grid.add_zeros("flow__horizontal_velocity_at_node", at="node")
+    except FieldError:
+        grid.at_node["flow__horizontal_velocity_at_node"][:] = 0.0
+    try:
+        grid.add_zeros("flow__vertical_velocity_at_node", at="node")
+    except FieldError:
+        grid.at_node["flow__vertical_velocity_at_node"][:] = 0.0
+    try:
+        grid.add_zeros("flow__horizontal_velocity", at="link")
+    except FieldError:
+        grid.at_link["flow__horizontal_velocity"][:] = 0.0
+    try:
+        grid.add_zeros("flow__vertical_velocity", at="link")
+    except FieldError:
+        grid.at_link["flow__vertical_velocity"][:] = 0.0
+
+def set_inlet_condition(
+    grid,
+    config_file=None,
+    inlet_edge=None,
+    C_ini=[0.001, 0.001, 0.001],
+    h_ini=0.1,
+    U_ini=0.1,
+):
+    """set initial condition at the inlet of a grid
+
+       Parameters
+       ----------------------
+       grid: RasterModelGrid
+          a landlab grid object to be used in TurbidityCurrent2D
+        
+        config_file: String, optional
+            path to a configuration file
+
+       inlet_edge: list, optional
+          [xmin, xmax] of the inlet edge. 
+          If config_file is specified, this value is ignored and the inlet edge is set from the configuration file.
+          default is None.
+
+       C_ini: list, optional
+          initial sediment concentration at the inlet edge
+          If config_file is specified, this value is ignored and the inlet edge is set from the configuration file.
+
+       h_ini: float, optional
+          initial flow thickness at the inlet edge
+          If config_file is specified, this value is ignored and the inlet edge is set from the configuration file.
+
+       U_ini: float, optional
+          initial flow velocity at the inlet edge
+          If config_file is specified, this value is ignored and the inlet edge is set from the configuration file.
+    """
+    if config_file is not None:
+        with open(config_file) as yml:
+            config = yaml.safe_load(yml)
+        inlet_edge = config['inlet_condition']['inlet_edge']
+        inlet_width = config['inlet_condition']['inlet_width']
+        C_ini = config['inlet_condition']['C_ini']
+        h_ini = config['inlet_condition']['h_ini']
+        U_ini = config['inlet_condition']['U_ini']
+
+    else:
+        # check inlet_edge
+        if inlet_edge is None and inlet_width is None:
+            raise ValueError("inlet_edge or inlet_width must be specified in the config file or as an argument.")
+        if len(inlet_edge) != 2:
+            raise ValueError("inlet_edge must be a list of two values [xmin, xmax].")
+
+        # check C_ini
+        if len(C_ini) != len(config['model_param']['Ds']):
+            raise ValueError("C_ini must be a list of length equal to the number of grain size classes.")
+        else:
+            if type(C_ini) is float or type(C_ini) is np.float64:
+                C_ini = np.array([C_ini])
+            else:
+                C_ini = np.array(C_ini).reshape(len(C_ini), 1)
+        
+    # set inlet region
+    if inlet_edge is None and inlet_width is not None:
+        flume_width = grid.x_of_node.max()
+        inlet_edge = [(flume_width - inlet_width) / 2.0, (flume_width + inlet_width) / 2.0]
+
+    inlet = np.where(
+        (grid.x_of_node >= inlet_edge[0])
+        & (grid.x_of_node <= inlet_edge[1])
+        & (grid.y_of_node == grid.y_of_node.max())
+    )
+    inlet_link = np.where(
+        (grid.midpoint_of_link[:, 0] >= inlet_edge[0])
+        & (grid.midpoint_of_link[:, 0] <= inlet_edge[1])
+        & (grid.midpoint_of_link[:, 1] == grid.y_of_node.max())
+    )
+
+    # set condition at inlet
+    grid.at_node["flow__depth"][inlet] = h_ini
+    for i in range(len(C_ini)):
+        grid.at_node["flow__sediment_concentration_{}".format(i)][inlet] = C_ini[i]
+    grid.at_node["flow__horizontal_velocity_at_node"][inlet] = 0.0
+    grid.at_node["flow__vertical_velocity_at_node"][inlet] = -U_ini
+    grid.at_link["flow__horizontal_velocity"][inlet_link] = 0.0
+    grid.at_link["flow__vertical_velocity"][inlet_link] = -U_ini
+    grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini)
+
+    # set boundary condition at inlet
+    grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
+
+def set_boundary_condition(grid, top_edge_bc, bottom_edge_bc, left_edge_bc, right_edge_bc):
+    """ set boundary condition at the edges of a grid
+    
+       Parameters
+       ----------------------
+       grid: RasterModelGrid
+          a landlab grid object to be used in TurbidityCurrent2D
+
+       top_edge_bc: String
+          boundary condition at the top edge. 
+          Options are 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'
+
+       bottom_edge_bc: String
+          boundary condition at the bottom edge. 
+          Options are 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'
+
+       left_edge_bc: String
+          boundary condition at the left edge. 
+          Options are 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'
+
+       right_edge_bc: String
+          boundary condition at the right edge. 
+          Options are 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'
+    """
+
+    # set boundary condition at top edge
+    if top_edge_bc == "fixed_value":
+        grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
+    elif top_edge_bc == "fixed_gradient":
+        grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
+    elif top_edge_bc == "looped_boundary":
+        grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_LOOPED
+    elif top_edge_bc == "closed_boundary":
+        grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_CLOSED
+    else:
+        raise ValueError(
+            "top_edge_bc must be one of 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'."
+        )
+    
+    # set boundary condition at bottom edge
+    if bottom_edge_bc == "fixed_value":
+        grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_VALUE
+    elif bottom_edge_bc == "fixed_gradient":
+        grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
+    elif bottom_edge_bc == "looped_boundary":
+        grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_LOOPED
+    elif bottom_edge_bc == "closed_boundary":
+        grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_CLOSED
+    else:
+        raise ValueError(
+            "bottom_edge_bc must be one of 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'."
+        )
+    
+    # set boundary condition at left edge
+    if left_edge_bc == "fixed_value":
+        grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_FIXED_VALUE
+    elif left_edge_bc == "fixed_gradient":
+        grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
+    elif left_edge_bc == "looped_boundary":
+        grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_LOOPED
+    elif left_edge_bc == "closed_boundary":
+        grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_CLOSED
+    else:
+        raise ValueError(
+            "left_edge_bc must be one of 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'."
+        )
+    
+    # set boundary condition at right edge
+    if right_edge_bc == "fixed_value":
+        grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_VALUE
+    elif right_edge_bc == "fixed_gradient":
+        grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
+    elif right_edge_bc == "looped_boundary":
+        grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_LOOPED
+    elif right_edge_bc == "closed_boundary":
+        grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_CLOSED
+    else:
+        raise ValueError(
+            "right_edge_bc must be one of 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'."
+        )
+    
+def round_values(x, decimals=0):
+    """Round a number to a specified number of decimal places.
+    Parameters
+    ----------
+    x : float or ndarray
+        The number or array of numbers to round.
+    decimals : int, optional
+        The number of decimal places to round to. Default is 0.
+
+    Returns
+    -------
+    rounded_value float or ndarray
+        The rounded number or array of numbers.
+    """
+    rounded_value = np.floor(x * 10**decimals + 0.5) / 10**decimals
+
+    return rounded_value

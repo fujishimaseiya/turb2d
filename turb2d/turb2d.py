@@ -10,6 +10,7 @@ from .wetdry import find_wet_grids, process_partial_wet_grids
 from .sediment_func import get_es, get_ew, get_ws, get_det_rate, get_bedload
 from .cip import update_gradient, update_gradient2
 from .cip import CIP2D, Jameson, SOR
+from turb2d._links import top_edge_horizontal_ids, bottom_edge_horizontal_ids, left_edge_vertical_ids, right_edge_vertical_ids
 from landlab.io.native_landlab import save_grid
 from landlab.io.netcdf import write_netcdf
 
@@ -21,6 +22,7 @@ from tqdm import tqdm
 import pdb
 import yaml
 import netCDF4
+import csv
 
 """A component of landlab that simulates a turbidity current on 2D grids
 
@@ -171,6 +173,8 @@ class TurbidityCurrent2D(Component):
         p_gp1991 = 0.1,
         flow_type = "surge",
         nesting=False,
+        parent_grid=None,
+        child_grid=None,
         **kwds
     ):
         """Create a component of turbidity current
@@ -252,7 +256,13 @@ class TurbidityCurrent2D(Component):
         flow_type: string, optional
             Choose "surge" or "current" for the type of flow
         nesting: bool, optional
-            If True, the model is used for nested grid
+            If True, nested grid is used.
+        parent_grid: bool or None, optional
+            When you use nested grid, this parameter is needed to distinguish between parent and child grid.
+            If True, this TurbidityCurrent2D object is for the parent grid.
+        child_grid: bool or None, optional
+            When you use nested grid, this parameter is needed to distinguish between parent and child grid.
+            If True, this TurbidityCurrent2D object is for the child grid.
         """
         super(TurbidityCurrent2D, self).__init__(grid, **kwds)
 
@@ -304,6 +314,8 @@ class TurbidityCurrent2D(Component):
             self.inlet = inlet
             self.inlet_link = inlet_link
             self.nesting = nesting
+            self.parent_grid = parent_grid
+            self.child_grid = child_grid
 
         else:
             with open(config_path) as yml:
@@ -316,7 +328,6 @@ class TurbidityCurrent2D(Component):
             if type(config['model_param']['Ds']) is float:
                 self.Ds = np.array(config['model_param']['Ds']).reshape(1, 1)
             else:
-                # FIXME how explain list in yaml?
                 self.Ds = np.array(config['model_param']['Ds']).reshape(len(config['model_param']['Ds']), 1)
             self.number_gclass = len(self.Ds)
             self.Ch_w = config['model_param']['Ch_w']
@@ -349,10 +360,13 @@ class TurbidityCurrent2D(Component):
             else:
                 self.p_gp1991 = None
             self.flow_type = config['model_param']['flow_type']
-            self.config = config
             self.inlet = inlet
             self.inlet_link = inlet_link
             self.nesting = nesting
+            self.parent_grid = parent_grid
+            self.child_grid = child_grid
+            if self.nesting is True and self.parent_grid is False and self.child_grid is True:
+                self.first_nesting = True
                 
         # Now setting up fields at nodes and links
         try:
@@ -965,7 +979,7 @@ class TurbidityCurrent2D(Component):
         if self.neighbor_flag is False:
             set_up_neighbor_arrays(self)
             # calculate initial Kh
-            self.Kh[self.inlet_link] = self.h_link[self.inlet_link]*self.Cf*self.v[self.inlet_link]**2/self.alpha_4eq
+            self.Kh[self.inlet_link] = self.h_link[self.inlet_link]*self.Cf*(self.u[self.inlet_link]**2 + self.v[self.inlet_link]**2)/self.alpha_4eq
 
         # In case another component has added data to the fields, we just
         # reset our water depths, topographic elevations and water
@@ -1060,7 +1074,19 @@ class TurbidityCurrent2D(Component):
         update_up_down_links_and_nodes(self)
         self.copy_values_to_temp()
 
+        # if you want to use nested grid, initial value of parent grid is saved to calculate the conditions of the child grid
+        if (self.nesting is True) and (self.parent_grid is True) and (self.child_grid is False):
+            self.h_ini = self.h.copy()
+            self.u_node_ini = self.u_node.copy()
+            self.v_node_ini = self.v_node.copy()
+            self.C_i_ini = self.C_i.copy()
+            self.bed_thick_i_ini = self.bed_thick_i.copy()
+            self.bed_thick_ini = self.bed_thick.copy()
+            if self.model == '4eq':
+                self.Kh_node_ini = self.Kh_node.copy()
+
         # continue calculation until the prescribed time elapsed
+        self.count = 0
         while self.local_elapsed_time < dt:
             # set local time step
             dt_local = self.calc_time_step()
@@ -1070,8 +1096,75 @@ class TurbidityCurrent2D(Component):
             if self.local_elapsed_time + dt_local > dt:
                 dt_local = dt - self.local_elapsed_time
             self.dt_local = dt_local
+            # if self.count == 300:
+            # if you want to use nested grid and this is the child grid, boundary and initial conditions were set.
+            if (self.nesting is True) and (self.parent_grid is False) and (self.child_grid is True):
+                idx = np.argmin(np.abs(self.time_interp-self.local_elapsed_time))
+                num_nonzero = np.count_nonzero(self.h_node_child_grid_condition[idx, :])
+                num_nan = np.count_nonzero(np.isnan(self.h_node_child_grid_condition[idx, :]))
+                if num_nan > 0:
+                    raise ValueError("There are NaN values in the child grid condition array. Please check the input data.")
+                elif self.first_nesting is True and num_nonzero > 0:
+                    # もし，idxで指定した配列に値が存在し，かつ値のある配列を入れるのが初めてなら．空間補間した配列を入れる
+                    # それ以外は，境界のみを更新する．
+                    self.h[:] = self.h_node_child_grid_condition[idx, :]
+                    self.u_node[:] = self.u_node_child_grid_condition[idx, :]
+                    self.v_node[:] = self.v_node_child_grid_condition[idx, :]
+                    self.C_i[:, :] = self.C_i_node_child_grid_condition[idx, :, :]
+                    for j in range(self.number_gclass):
+                        self.Ch_i[j, :] = self.C_i[j, :] * self.h
+                    self.C[:] = np.sum(self.C_i, axis=0)
+                    self.Ch[:] = np.sum(self.Ch_i, axis=0)
+                    self.bed_thick[:] = self.bed_thick_node_child_grid_condition[idx, :]
+                    self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[idx, :, :]
+                    if self.model == '4eq':
+                        self.Kh_node[:] = self.Kh_node_child_grid_condition[idx, :]
+                    self.first_nesting = False
+                    
+                elif self.first_nesting is False and num_nonzero > 0:
+                    # 境界のみを更新する
+                    self.h[self.grid.nodes_at_top_edge] = self.h_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
+                    self.h[self.grid.nodes_at_left_edge] = self.h_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
+                    self.h[self.grid.nodes_at_right_edge] = self.h_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
+                    self.h[self.grid.nodes_at_bottom_edge] = self.h_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
 
-            # Find wet and partial wet grids
+                    self.u_node[self.grid.nodes_at_top_edge] = self.u_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
+                    self.u_node[self.grid.nodes_at_left_edge] = self.u_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
+                    self.u_node[self.grid.nodes_at_right_edge] = self.u_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
+                    self.u_node[self.grid.nodes_at_bottom_edge] = self.u_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
+
+                    self.v_node[self.grid.nodes_at_top_edge] = self.v_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
+                    self.v_node[self.grid.nodes_at_left_edge] = self.v_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
+                    self.v_node[self.grid.nodes_at_right_edge] = self.v_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
+                    self.v_node[self.grid.nodes_at_bottom_edge] = self.v_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
+                    # NOTE: When vectorization is performed using advanced indexing, the indexed axis is moved to the first (0-th) dimension, changing the shape of the array. 
+                    # Therefore, a for-loop is used instead.
+                    for j in range(self.number_gclass):
+                        self.C_i[j, self.grid.nodes_at_top_edge] = self.C_i_node_child_grid_condition[idx, j, self.grid.nodes_at_top_edge]
+                        self.C_i[j, self.grid.nodes_at_left_edge] = self.C_i_node_child_grid_condition[idx, j, self.grid.nodes_at_left_edge]
+                        self.C_i[j, self.grid.nodes_at_right_edge] = self.C_i_node_child_grid_condition[idx, j, self.grid.nodes_at_right_edge]
+                        self.C_i[j, self.grid.nodes_at_bottom_edge] = self.C_i_node_child_grid_condition[idx, j, self.grid.nodes_at_bottom_edge]
+                        self.Ch_i[j, :] = self.C_i[j, :] * self.h
+                        self.bed_thick_i[j, self.grid.nodes_at_top_edge] = self.bed_thick_i_node_child_grid_condition[idx, j, self.grid.nodes_at_top_edge]
+                        self.bed_thick_i[j, self.grid.nodes_at_left_edge] = self.bed_thick_i_node_child_grid_condition[idx, j, self.grid.nodes_at_left_edge]
+                        self.bed_thick_i[j, self.grid.nodes_at_right_edge] = self.bed_thick_i_node_child_grid_condition[idx, j, self.grid.nodes_at_right_edge]
+                        self.bed_thick_i[j, self.grid.nodes_at_bottom_edge] = self.bed_thick_i_node_child_grid_condition[idx, j, self.grid.nodes_at_bottom_edge] 
+
+                    self.C[:] = np.sum(self.C_i, axis=0)
+                    self.Ch[:] = np.sum(self.Ch_i, axis=0)
+                    self.bed_thick[self.grid.nodes_at_top_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
+                    self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
+                    self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
+                    self.bed_thick[self.grid.nodes_at_bottom_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
+
+                    if self.model == '4eq':
+                        self.Kh_node[self.grid.nodes_at_top_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
+                        self.Kh_node[self.grid.nodes_at_left_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
+                        self.Kh_node[self.grid.nodes_at_right_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
+                        self.Kh_node[self.grid.nodes_at_bottom_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
+
+                self.copy_values_to_temp()
+                
             find_wet_grids(self)
             map_values(
                 self,
@@ -1095,12 +1188,19 @@ class TurbidityCurrent2D(Component):
                 U=self.U,
                 U_node=self.U_node,
             )
-
-            # Process partial wet grids
+            ### debugging code  ###
+            if self.count == 59 and self.last == 52 and self.child_grid == True:
+                pdb.set_trace()
+            # end of debugging code ###
+            # Process partial wet grid
+            # if self.count == 457:
+            #     pdb.set_trace()
             self._process_wet_dry_boundary()
 
             # calculate non-advection terms using implicit method
             self._nonadvection_phase()
+            # if np.any(self.Ch_i_temp > 1.):
+            #     pdb.set_trace()
 
             # calculate advection terms using cip method
             self._advection_phase()
@@ -1117,14 +1217,28 @@ class TurbidityCurrent2D(Component):
 
             # add local dt to the timer "local elapsed time"
             self.local_elapsed_time += self.dt_local
+            self.count += 1
+
+            # This is the code for debugging #
+            # if self.nesting is True and self.parent_grid is False and self.child_grid is True:
+            #     self.bed_thick_i[:, self.grid.nodes_at_top_edge] = self.bed_thick_i_node_top[idx, :, :]
+            #     self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_left[idx, :]
+            #     self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_right[idx, :]
+            #     self.bed_thick[self.grid.nodes_at_bottom_edge] = self.bed_thick_node_bottom[idx, :]
+
+            #     self.bed_thick[self.grid.nodes_at_top_edge] = self.bed_thick_node_top[idx, :]
+            #     self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_left[idx, :]
+            #     self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_right[idx, :]
+            #     self.bed_thick[self.grid.nodes_at_bottom_edge] = self.bed_thick_node_bottom[idx, :]
+            # end of debugging code #
 
         # This is the end of the calculation
         # Update bed thickness and record results in the grid
         self.elapsed_time += self.local_elapsed_time
         self.bed_thick = self.eta - self.eta_init
-        self.bed_thick[self.grid.nodes_at_left_edge] = 0.0
-        self.bed_thick[self.grid.nodes_at_right_edge] = 0.0
-        self.bed_thick[self.grid.nodes_at_bottom_edge] = 0.0
+
+        # self.bed_thick[self.grid.nodes_at_right_edge] = 0.0
+        # self.bed_thick[self.grid.nodes_at_bottom_edge] = 0.0
         Ri_temp = np.zeros_like(self.Ri)
         self.Ri[:] = np.divide(self.R*self.g*self.Ch[:], self.U_node[:]**2, out=Ri_temp, where=(self.U_node[:]**2 != 0))
         nonzero_idx = np.where(self.Ri != 0)
@@ -1234,6 +1348,8 @@ class TurbidityCurrent2D(Component):
                 out_dfdx=self.dChdx_i_temp[i, :],
                 out_dfdy=self.dChdy_i_temp[i, :],
             )
+        # if np.any(self.Ch_i_temp > 1.):
+        #     pdb.set_trace()
 
         if self.model == "4eq":
             self.cip2d.run(
@@ -1296,12 +1412,15 @@ class TurbidityCurrent2D(Component):
            Pressure terms for velocities and mass conservation equations
            are solved implicitly by CCUP method
         """
-
+        # log_v_temp_boundary_max(self, v=self.v)
+        # log_v_node(self)
         # Solve pressure term and associated velocity change by CCUP method
         self._CCUP()
+        # log_v_temp("CCUP", self.v_temp)
 
         # Solve gravity terms
         self._gravity()
+        # log_v_temp("gravity", self.v_temp)
 
         # Solve artificial viscosity for momentum
         self._artificial_viscosity(
@@ -1318,15 +1437,19 @@ class TurbidityCurrent2D(Component):
             u_node=self.u_node_temp,
             v_node=self.v_node_temp,
         )
+        # log_v_temp("artificial viscosity", self.v_temp) 
 
         # Solve friction terms
         self._friction()
+        # log_v_temp("friction", self.v_temp)
 
         # Solve mass conservation terms
         self._fluid_mass_conservation()
+        # log_v_temp("fluid_mass_conservation", self.v_temp)
 
         # Solve diffusion terms for momentum
         self._momentum_diffusion()
+        # log_v_temp("momentum_diffusion", self.v_temp)
 
         # for 4 equation model
         if self.model == "4eq":
@@ -1355,6 +1478,8 @@ class TurbidityCurrent2D(Component):
 
         # update values
         self.update_values()
+        # if np.any(self.Ch_i_temp > 1.):
+        #     pdb.set_trace()
         map_values(
             self,
             h=self.h,
@@ -1451,6 +1576,8 @@ class TurbidityCurrent2D(Component):
             det_rate_v = 0.0
 
         # calculate friction terms using semi-implicit scheme
+        # print("h_link min_horiz:", np.min(self.h_link[self.wet_horizontal_links]), "h_link_max_horiz:", np.max(self.h_link[self.wet_horizontal_links]))
+        # print("h_link min_vert:", np.min(self.h_link[self.wet_vertical_links]), "h_link_max_vert:", np.max(self.h_link[self.wet_vertical_links]))
         self.u_temp[self.wet_horizontal_links] /= (
             1
             + (
@@ -1508,6 +1635,9 @@ class TurbidityCurrent2D(Component):
             dy
         )
 
+        # if np.any(self.div[wet_pwet_nodes]> 100):
+        #     pdb.set_trace()  # Trigger debugger
+
         # remove negative values
         self._remove_abnormal_values()
 
@@ -1559,6 +1689,10 @@ class TurbidityCurrent2D(Component):
                 - de_w)
                 * self.dt_local
             )
+        # if np.isnan(self.h_temp).any():
+        #     pdb.set_trace()  # Trigger debugger
+        # if np.any(self.h_temp[self.wet_nodes] <= 0):
+        #     pdb.set_trace()  # Trigger debugger
 
         # map nodes to links
         map_nodes_to_links(
@@ -1713,6 +1847,10 @@ class TurbidityCurrent2D(Component):
         self.p[wet_pwet_nodes] = h[wet_pwet_nodes] * Ch[wet_pwet_nodes]
         self.update_boundary_conditions(p=self.p)
         self.p_temp[:] = self.p[:]
+        # if np.isnan(self.p_temp).any():
+        #     pdb.set_trace()
+        # if np.any(self.p_temp[self.wet_nodes] <= 0):
+        #     pdb.set_trace()  # Trigger debugger
 
         # set coefficients to SOR solver
         self.sor.a[wet_nodes] = (
@@ -1775,30 +1913,37 @@ class TurbidityCurrent2D(Component):
         self.sor.run(self.p, wet_nodes, out=self.p_temp)
 
         # calculate u, v from pressure
-        self.u_temp[self.wet_horizontal_links] -= (
-            Rg
-            / (2 * self.h_link[self.wet_horizontal_links])
-            * (
-                self.p_temp[
-                    self.east_node_at_horizontal_link[self.wet_horizontal_links]
-                ]
-                - self.p_temp[
-                    self.west_node_at_horizontal_link[self.wet_horizontal_links]
-                ]
+        try:
+            old_settings = np.seterr(divide='raise', invalid='raise')
+            self.u_temp[self.wet_horizontal_links] -= (
+                Rg
+                / (2 * self.h_link[self.wet_horizontal_links])
+                * (
+                    self.p_temp[
+                        self.east_node_at_horizontal_link[self.wet_horizontal_links]
+                    ]
+                    - self.p_temp[
+                        self.west_node_at_horizontal_link[self.wet_horizontal_links]
+                    ]
+                )
+                / dx
+                * dt
             )
-            / dx
-            * dt
-        )
-        self.v_temp[self.wet_vertical_links] -= (
-            Rg
-            / (2 * self.h_link[self.wet_vertical_links])
-            * (
-                self.p_temp[self.north_node_at_vertical_link[self.wet_vertical_links]]
-                - self.p_temp[self.south_node_at_vertical_link[self.wet_vertical_links]]
+            self.v_temp[self.wet_vertical_links] -= (
+                Rg
+                / (2 * self.h_link[self.wet_vertical_links])
+                * (
+                    self.p_temp[self.north_node_at_vertical_link[self.wet_vertical_links]]
+                    - self.p_temp[self.south_node_at_vertical_link[self.wet_vertical_links]]
+                )
+                / dy
+                * dt
             )
-            / dy
-            * dt
-        )
+            np.seterr(**old_settings)
+        except FloatingPointError:
+            print("ゼロ除算または無効値が発生しました。デバッガーを起動します。")
+            print(self.count)
+            pdb.set_trace()
 
     def _calculate_turbulent_kinetic_energy(self):
         """Calculate time development of layer-averaged turbulent kinetic energy
@@ -1988,16 +2133,16 @@ class TurbidityCurrent2D(Component):
                 out_f=self.Ch_i_temp[i, :],
             )
 
-        # if self.model == "4eq":
-        #     adjust_negative_values(
-        #         self.Kh_temp,
-        #         self.wet_pwet_nodes,
-        #         self.node_east,
-        #         self.node_west,
-        #         self.node_north,
-        #         self.node_south,
-        #         out_f=self.Kh_temp,
-        #     )
+        if self.model == "4eq":
+            adjust_negative_values(
+                self.Kh_temp,
+                self.wet_pwet_nodes,
+                self.node_east,
+                self.node_west,
+                self.node_north,
+                self.node_south,
+                out_f=self.Kh_temp,
+            )
 
     def _process_wet_dry_boundary(self):
         """Calculate processes at wet and dry boundary
@@ -2020,6 +2165,7 @@ class TurbidityCurrent2D(Component):
 
         # update values
         self.update_values()
+ 
         map_values(
             self,
             h=self.h,
@@ -2346,13 +2492,15 @@ class TurbidityCurrent2D(Component):
         # Calculate the change of volume of suspended sediment
         # Settling is solved explicitly, and entrainment is
         # solved semi-implicitly
-        
+        # if np.any(Ch_i > 1.0):
+        #     pdb.set_trace()  # Trigger debugger
         out_Ch_i[:, nodes] = (
             Ch_i[:, nodes]
             + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt
         )
         out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
-
+        # if np.any(out_Ch_i[:, nodes] > 1.):
+        #     pdb.set_trace()  # Trigger debugger
         # # 3-order adams-bashforth method
         # pdb.set_trace()
         # if self.local_elapsed_time == 0.0 and self.repeat == 0 and self.last == 1:
@@ -2652,7 +2800,54 @@ class TurbidityCurrent2D(Component):
 
         # adjust abnormal values
         self._remove_abnormal_values()
+        ### ここから，update_valuesは本当にnestingで場合分けが必要か？###
+        ### coreの判定が終わっているなら境界は計算されない．それなら境界以外を指定する必要はないのでは？ nestingとか関係ないのでは？###
+        # if (self.nesting == True) and (self.parent_grid == False) and (self.child_grid == True):
+        #     # indices of boundary nodes and links
+        #     boundary_nodes = np.concatenate([
+        #         self.grid.nodes_at_top_edge,
+        #         self.grid.nodes_at_bottom_edge,
+        #         self.grid.nodes_at_left_edge,
+        #         self.grid.nodes_at_right_edge
+        #     ])
+        #     boundary_links = np.concatenate([
+        #         self.top_edge_horizontal_links_child,
+        #         self.bottom_edge_horizontal_links_child,
+        #         self.left_edge_vertical_links_child,
+        #         self.right_edge_vertical_links_child
+        #     ])
+        #     # indices of inner nodes and links
+        #     inner_nodes = np.setdiff1d(np.arange(self.grid.number_of_nodes), boundary_nodes)
+        #     inner_links = np.setdiff1d(np.arange(self.grid.number_of_links), boundary_links)
+        # # if self.nesting == False, all nodes and links are updated
+        # else:
+        #     inner_nodes = slice(None)
+        #     inner_links = slice(None)
 
+        # self.h[inner_nodes] = self.h_temp[inner_nodes]
+        # self.dhdx[inner_nodes] = self.dhdx_temp[inner_nodes]
+        # self.dhdy[inner_nodes] = self.dhdy_temp[inner_nodes]
+        # self.u[inner_links] = self.u_temp[inner_links]
+        # self.dudx[inner_links] = self.dudx_temp[inner_links]
+        # self.dudy[inner_links] = self.dudy_temp[inner_links]
+        # self.v[inner_links] = self.v_temp[inner_links]
+        # self.dvdx[inner_links] = self.dvdx_temp[inner_links]
+        # self.dvdy[inner_links] = self.dvdy_temp[inner_links]
+        # self.Ch_i[:, inner_nodes] = self.Ch_i_temp[:, inner_nodes]
+        # self.dChdx_i[:, inner_nodes] = self.dChdx_i_temp[:, inner_nodes]
+        # self.dChdy_i[:, inner_nodes] = self.dChdy_i_temp[:, inner_nodes]
+        # self.Ch_temp[inner_nodes] = np.sum(self.Ch_i[:, inner_nodes], axis=0)
+        # self.Ch[inner_nodes] = self.Ch_temp[inner_nodes]
+        # self.bed_thick_i[:, inner_nodes] = self.bed_thick_i_temp[:, inner_nodes]
+        # self.eta[inner_nodes] = self.eta_temp[inner_nodes]
+        # self.U[inner_links] = self.U_temp[inner_links]
+        # self.U_node[inner_nodes] = self.U_node_temp[inner_nodes]
+        # if self.model == "4eq":
+        #     self.Kh[inner_links] = self.Kh_temp[inner_links]
+        #     self.dKhdx[inner_links] = self.dKhdx_temp[inner_links]
+        #     self.dKhdy[inner_links] = self.dKhdy_temp[inner_links]
+        #     map_links_to_nodes(self, Kh=self.Kh, Kh_node=self.Kh_node)
+            
         # copy values from temp to grid values
         self.h[:] = self.h_temp[:]
         self.dhdx[:] = self.dhdx_temp[:]
@@ -2859,7 +3054,6 @@ class TurbidityCurrent2D(Component):
             u[self.fixed_grad_links] = u[self.fixed_grad_anchor_links]
             u[self.fixed_grad_link_at_east[u[self.fixed_grad_link_at_east] < 0]] = 0
             u[self.fixed_grad_link_at_west[u[self.fixed_grad_link_at_west] > 0]] = 0
-            # なんで1/3と2/3?
             u[self.fixed_value_links] = (2.0 / 3.0) * u_node[self.fixed_value_nodes] + (
                 1.0 / 3.0
             ) * u[self.fixed_value_anchor_links]
@@ -2911,9 +3105,17 @@ class TurbidityCurrent2D(Component):
             )
 
         if u_node is not None:
+            # right_edge_anchor_nodes = self.node_west[self.grid.nodes_at_right_edge]
+            # left_edge_anchor_nodes = self.node_east[self.grid.nodes_at_left_edge]
+            # u_node[right_edge_anchor_nodes[u_node[right_edge_anchor_nodes]<0]] = 0
+            # u_node[left_edge_anchor_nodes[u_node[left_edge_anchor_nodes]>0]] = 0
             u_node[self.fixed_grad_nodes] = u_node[self.fixed_grad_anchor_nodes]
 
         if v_node is not None:
+            # bottom_edge_anchor_nodes = self.node_north[self.grid.nodes_at_bottom_edge]
+            # top_edge_anchor_nodes = self.node_south[self.grid.nodes_at_top_edge]
+            # v_node[top_edge_anchor_nodes[u_node[top_edge_anchor_nodes]>0]] = 0
+            # v_node[bottom_edge_anchor_nodes[u_node[bottom_edge_anchor_nodes]<0]] = 0
             v_node[self.fixed_grad_nodes] = v_node[self.fixed_grad_anchor_nodes]
 
         if p is not None:
@@ -2955,6 +3157,45 @@ class TurbidityCurrent2D(Component):
         #                 - self.eta_init[self.fixed_value_anchor_nodes]
         #                 )/(bed_thick_i.shape[0])
 
+def log_v_temp(step, v_temp):
+    max_filename = f"v_temp_max_{step}.csv"
+    min_filename = f"v_temp_min_{step}.csv"
+    max_val = np.max(v_temp)
+    min_val = np.min(v_temp)
+    with open(max_filename, "a", newline="") as f_max:
+        writer = csv.writer(f_max)
+        writer.writerow([max_val])
+    with open(min_filename, "a", newline="") as f_min:
+        writer = csv.writer(f_min)
+        writer.writerow([min_val])
+
+def log_v_temp_boundary_max(self, v):
+    # 境界リンクのインデックスを取得
+    # 例: self.fixed_value_links, self.fixed_grad_links, self.fixed_value_edge_links など
+    # 必要に応じて適切な境界リンク配列に変更してください
+    boundary_links = np.concatenate([
+        self.top_edge_horizontal_links_child,
+        self.bottom_edge_horizontal_links_child,
+        self.left_edge_vertical_links_child,
+        self.right_edge_vertical_links_child
+    ])
+    # vはself.v_tempやself.vなどを想定
+    max_val = np.max(v[boundary_links])
+    with open("v_temp_boundary_max.csv", "a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([max_val])
+
+def log_v_node(self):
+    # 境界リンクのインデックスを取得
+    # 例: self.fixed_value_links, self.fixed_grad_links, self.fixed_value_edge_links など
+    # 必要に応じて適切な境界リンク配列に変更してください
+    # vはself.v_tempやself.vなどを想定
+    v_node = self.v_node.reshape(11, 11)
+    v_save = v_node[:, 8].reshape(1, -1)  # shape (1, 11)
+
+    with open("v_node.csv", "a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(v_save.flatten())  
 
 
 def run(
