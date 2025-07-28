@@ -136,7 +136,8 @@ def map_values(
     """map parameters at nodes to links, and those at links to nodes
     """
     # check if we need to map values from nodes to links for nesting calculation
-    if Kh_node is not None and tc.nesting is True:
+    nesting = (tc.one_way_nesting or tc.two_way_nesting)
+    if Kh_node is not None and nesting is True:
         map_nodes_to_links(
         tc,
         Kh_node=Kh_node,
@@ -556,7 +557,8 @@ def map_nodes_to_links(
         )
     
     # check if this calcultion used nesting grid
-    if tc.nesting is True and tc.parent_grid is False and tc.child_grid is True:
+    nesting = (tc.one_way_nesting or tc.two_way_nesting)
+    if nesting is True and tc.parent_grid is False and tc.child_grid is True:
         update_for_nesting = True
     else:
         update_for_nesting = False

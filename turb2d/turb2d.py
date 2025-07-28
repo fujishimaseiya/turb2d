@@ -172,7 +172,8 @@ class TurbidityCurrent2D(Component):
         alpha_4eq = 0.1,
         p_gp1991 = 0.1,
         flow_type = "surge",
-        nesting=False,
+        one_way_nesting=False,
+        two_way_nesting=False,
         parent_grid=None,
         child_grid=None,
         **kwds
@@ -313,7 +314,8 @@ class TurbidityCurrent2D(Component):
             self.flow_type = flow_type
             self.inlet = inlet
             self.inlet_link = inlet_link
-            self.nesting = nesting
+            self.one_way_nesting = one_way_nesting
+            self.two_way_nesting = two_way_nesting
             self.parent_grid = parent_grid
             self.child_grid = child_grid
 
@@ -362,10 +364,12 @@ class TurbidityCurrent2D(Component):
             self.flow_type = config['model_param']['flow_type']
             self.inlet = inlet
             self.inlet_link = inlet_link
-            self.nesting = nesting
+            self.one_way_nesting = config['grid_param']['one_way_nesting']
+            self.two_way_nesting = config['grid_param']['two_way_nesting']
             self.parent_grid = parent_grid
             self.child_grid = child_grid
-            if self.nesting is True and self.parent_grid is False and self.child_grid is True:
+            nesting = (self.one_way_nesting or self.two_way_nesting)
+            if nesting is True and self.parent_grid is False and self.child_grid is True:
                 self.first_nesting = True
                 
         # Now setting up fields at nodes and links
@@ -1075,7 +1079,7 @@ class TurbidityCurrent2D(Component):
         self.copy_values_to_temp()
 
         # if you want to use nested grid, initial value of parent grid is saved to calculate the conditions of the child grid
-        if (self.nesting is True) and (self.parent_grid is True) and (self.child_grid is False):
+        if (self.one_way_nesting is True) and (self.parent_grid is True) and (self.child_grid is False):
             self.h_ini = self.h.copy()
             self.u_node_ini = self.u_node.copy()
             self.v_node_ini = self.v_node.copy()
@@ -1096,9 +1100,13 @@ class TurbidityCurrent2D(Component):
             if self.local_elapsed_time + dt_local > dt:
                 dt_local = dt - self.local_elapsed_time
             self.dt_local = dt_local
-            # if self.count == 300:
+
+            # check the nesting flag
+            if (self.one_way_nesting is True) and (self.parent_grid is True):
+                raise ValueError("Either self.one_way_nesting or self.parent_grid must be false.")
+            
             # if you want to use nested grid and this is the child grid, boundary and initial conditions were set.
-            if (self.nesting is True) and (self.parent_grid is False) and (self.child_grid is True):
+            if (self.one_way_nesting is True) and (self.parent_grid is False) and (self.child_grid is True):
                 idx = np.argmin(np.abs(self.time_interp-self.local_elapsed_time))
                 num_nonzero = np.count_nonzero(self.h_node_child_grid_condition[idx, :])
                 num_nan = np.count_nonzero(np.isnan(self.h_node_child_grid_condition[idx, :]))
@@ -1163,6 +1171,70 @@ class TurbidityCurrent2D(Component):
                         self.Kh_node[self.grid.nodes_at_right_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
                         self.Kh_node[self.grid.nodes_at_bottom_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
 
+            elif (self.two_way_nesting is True) and (self.parent_grid is False) and (self.child_grid is True):
+                num_nonzero = np.count_nonzero(self.h_node_child_grid_condition[:])
+                num_nan = np.count_nonzero(np.isnan(self.h_node_child_grid_condition[:]))
+                if num_nan > 0:
+                    raise ValueError("There are NaN values in the child grid condition array. Please check the input data.")
+                elif self.first_nesting is True and num_nonzero > 0:
+                    # もし，idxで指定した配列に値が存在し，かつ値のある配列を入れるのが初めてなら．空間補間した配列を入れる
+                    # それ以外は，境界のみを更新する．
+                    self.h[:] = self.h_node_child_grid_condition[:]
+                    self.u_node[:] = self.u_node_child_grid_condition[:]
+                    self.v_node[:] = self.v_node_child_grid_condition[:]
+                    self.C_i[:, :] = self.C_i_node_child_grid_condition[:, :]
+                    for j in range(self.number_gclass):
+                        self.Ch_i[j, :] = self.C_i[j, :] * self.h
+                    self.C[:] = np.sum(self.C_i, axis=0)
+                    self.Ch[:] = np.sum(self.Ch_i, axis=0)
+                    self.bed_thick[:] = self.bed_thick_node_child_grid_condition[:]
+                    self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[:, :]
+                    if self.model == '4eq':
+                        self.Kh_node[:] = self.Kh_node_child_grid_condition[:]
+                    self.first_nesting = False
+                    
+                elif self.first_nesting is False and num_nonzero > 0:
+                    # 境界のみを更新する
+                    self.h[self.grid.nodes_at_top_edge] = self.h_node_child_grid_condition[self.grid.nodes_at_top_edge]
+                    self.h[self.grid.nodes_at_left_edge] = self.h_node_child_grid_condition[self.grid.nodes_at_left_edge]
+                    self.h[self.grid.nodes_at_right_edge] = self.h_node_child_grid_condition[self.grid.nodes_at_right_edge]
+                    self.h[self.grid.nodes_at_bottom_edge] = self.h_node_child_grid_condition[self.grid.nodes_at_bottom_edge]
+
+                    self.u_node[self.grid.nodes_at_top_edge] = self.u_node_child_grid_condition[self.grid.nodes_at_top_edge]
+                    self.u_node[self.grid.nodes_at_left_edge] = self.u_node_child_grid_condition[self.grid.nodes_at_left_edge]
+                    self.u_node[self.grid.nodes_at_right_edge] = self.u_node_child_grid_condition[self.grid.nodes_at_right_edge]
+                    self.u_node[self.grid.nodes_at_bottom_edge] = self.u_node_child_grid_condition[self.grid.nodes_at_bottom_edge]
+
+                    self.v_node[self.grid.nodes_at_top_edge] = self.v_node_child_grid_condition[self.grid.nodes_at_top_edge]
+                    self.v_node[self.grid.nodes_at_left_edge] = self.v_node_child_grid_condition[self.grid.nodes_at_left_edge]
+                    self.v_node[self.grid.nodes_at_right_edge] = self.v_node_child_grid_condition[self.grid.nodes_at_right_edge]
+                    self.v_node[self.grid.nodes_at_bottom_edge] = self.v_node_child_grid_condition[self.grid.nodes_at_bottom_edge]
+                    # NOTE: When vectorization is performed using advanced indexing, the indexed axis is moved to the first (0-th) dimension, changing the shape of the array. 
+                    # Therefore, a for-loop is used instead.
+                    for j in range(self.number_gclass):
+                        self.C_i[j, self.grid.nodes_at_top_edge] = self.C_i_node_child_grid_condition[j, self.grid.nodes_at_top_edge]
+                        self.C_i[j, self.grid.nodes_at_left_edge] = self.C_i_node_child_grid_condition[j, self.grid.nodes_at_left_edge]
+                        self.C_i[j, self.grid.nodes_at_right_edge] = self.C_i_node_child_grid_condition[j, self.grid.nodes_at_right_edge]
+                        self.C_i[j, self.grid.nodes_at_bottom_edge] = self.C_i_node_child_grid_condition[j, self.grid.nodes_at_bottom_edge]
+                        self.Ch_i[j, :] = self.C_i[j, :] * self.h
+                        self.bed_thick_i[j, self.grid.nodes_at_top_edge] = self.bed_thick_i_node_child_grid_condition[j, self.grid.nodes_at_top_edge]
+                        self.bed_thick_i[j, self.grid.nodes_at_left_edge] = self.bed_thick_i_node_child_grid_condition[j, self.grid.nodes_at_left_edge]
+                        self.bed_thick_i[j, self.grid.nodes_at_right_edge] = self.bed_thick_i_node_child_grid_condition[j, self.grid.nodes_at_right_edge]
+                        self.bed_thick_i[j, self.grid.nodes_at_bottom_edge] = self.bed_thick_i_node_child_grid_condition[j, self.grid.nodes_at_bottom_edge] 
+
+                    self.C[:] = np.sum(self.C_i, axis=0)
+                    self.Ch[:] = np.sum(self.Ch_i, axis=0)
+                    self.bed_thick[self.grid.nodes_at_top_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_top_edge]
+                    self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_left_edge]
+                    self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_right_edge]
+                    self.bed_thick[self.grid.nodes_at_bottom_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_bottom_edge]
+
+                    if self.model == '4eq':
+                        self.Kh_node[self.grid.nodes_at_top_edge] = self.Kh_node_child_grid_condition[self.grid.nodes_at_top_edge]
+                        self.Kh_node[self.grid.nodes_at_left_edge] = self.Kh_node_child_grid_condition[self.grid.nodes_at_left_edge]
+                        self.Kh_node[self.grid.nodes_at_right_edge] = self.Kh_node_child_grid_condition[self.grid.nodes_at_right_edge]
+                        self.Kh_node[self.grid.nodes_at_bottom_edge] = self.Kh_node_child_grid_condition[self.grid.nodes_at_bottom_edge]
+                
                 self.copy_values_to_temp()
                 
             find_wet_grids(self)
@@ -1189,8 +1261,8 @@ class TurbidityCurrent2D(Component):
                 U_node=self.U_node,
             )
             ### debugging code  ###
-            if self.count == 59 and self.last == 52 and self.child_grid == True:
-                pdb.set_trace()
+            # if self.count == 59 and self.last == 52 and self.child_grid == True:
+            #     pdb.set_trace()
             # end of debugging code ###
             # Process partial wet grid
             # if self.count == 457:
@@ -1220,7 +1292,7 @@ class TurbidityCurrent2D(Component):
             self.count += 1
 
             # This is the code for debugging #
-            # if self.nesting is True and self.parent_grid is False and self.child_grid is True:
+            # if self.one_way_nesting is True and self.parent_grid is False and self.child_grid is True:
             #     self.bed_thick_i[:, self.grid.nodes_at_top_edge] = self.bed_thick_i_node_top[idx, :, :]
             #     self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_left[idx, :]
             #     self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_right[idx, :]
@@ -1913,6 +1985,7 @@ class TurbidityCurrent2D(Component):
         self.sor.run(self.p, wet_nodes, out=self.p_temp)
 
         # calculate u, v from pressure
+        ### try except are the code for debugging ###
         try:
             old_settings = np.seterr(divide='raise', invalid='raise')
             self.u_temp[self.wet_horizontal_links] -= (
@@ -2802,7 +2875,7 @@ class TurbidityCurrent2D(Component):
         self._remove_abnormal_values()
         ### ここから，update_valuesは本当にnestingで場合分けが必要か？###
         ### coreの判定が終わっているなら境界は計算されない．それなら境界以外を指定する必要はないのでは？ nestingとか関係ないのでは？###
-        # if (self.nesting == True) and (self.parent_grid == False) and (self.child_grid == True):
+        # if (self.one_way_nesting == True) and (self.parent_grid == False) and (self.child_grid == True):
         #     # indices of boundary nodes and links
         #     boundary_nodes = np.concatenate([
         #         self.grid.nodes_at_top_edge,
@@ -2819,7 +2892,7 @@ class TurbidityCurrent2D(Component):
         #     # indices of inner nodes and links
         #     inner_nodes = np.setdiff1d(np.arange(self.grid.number_of_nodes), boundary_nodes)
         #     inner_links = np.setdiff1d(np.arange(self.grid.number_of_links), boundary_links)
-        # # if self.nesting == False, all nodes and links are updated
+        # # if self.one_way_nesting == False, all nodes and links are updated
         # else:
         #     inner_nodes = slice(None)
         #     inner_links = slice(None)
