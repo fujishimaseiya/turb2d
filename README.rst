@@ -102,9 +102,3 @@ for i in range(10):
     print("", end="\r")
     print("{:.1f}% finished".format(i / last * 100), end='\r')
 save_grid(grid, 'tc{:04d}.nc'.format(i))
-
-
--------------------------
-Limitation and future implementation
-
-Single grain-size only. Boundary condition are always 'open' (no gradient).
