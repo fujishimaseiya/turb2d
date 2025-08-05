@@ -147,6 +147,10 @@ def find_wet_grids(tc):
     # find partial wet nodes and links in vertical axis  #
     ######################################################
     # vertical partial wet check
+    # ここで，ローカル変数wet_nodesは境界を含むが，tc.wet_nodesは境界を含まない．
+    # よって，wet_nodeが境界にしかない場合，wet_at_northの条件でwet nodeの北のノードを探すと，tc.wet_nodesはないが，tc.partial_wet_nodesが存在するということがあり得る．
+    # そうなると，tc.wet_nodesがないなら，tc.partial_wet_nodesを内容にするというのは大丈夫か？
+    # なぜtc.wet_nodesがないのにwet_horizontal_linksがあるのか？境界を含むから？
     wet_at_north = np.where(~(wet_nodes[core]) & (wet_nodes[node_north[core]]))
     vertically_partial_wet_nodes_N = core[wet_at_north]
     vertically_wettest_nodes_N = node_north[core[wet_at_north]]
