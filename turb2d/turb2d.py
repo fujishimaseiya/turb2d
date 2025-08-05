@@ -23,7 +23,7 @@ import pdb
 import yaml
 import netCDF4
 import csv
-
+from turb2d.nesting import OneWayNesting, TwoWayNesting
 """A component of landlab that simulates a turbidity current on 2D grids
 
 This component simulates turbidity currents using the 2-D numerical model of
@@ -1102,8 +1102,8 @@ class TurbidityCurrent2D(Component):
             self.dt_local = dt_local
 
             # check the nesting flag
-            if (self.one_way_nesting is True) and (self.parent_grid is True):
-                raise ValueError("Either self.one_way_nesting or self.parent_grid must be false.")
+            if (self.one_way_nesting is True) and (self.two_way_nesting is True):
+                raise ValueError("Either self.one_way_nesting or self.two_way_nesting must be false.")
             
             # if you want to use nested grid and this is the child grid, boundary and initial conditions were set.
             if (self.one_way_nesting is True) and (self.parent_grid is False) and (self.child_grid is True):
@@ -1234,8 +1234,8 @@ class TurbidityCurrent2D(Component):
                         self.Kh_node[self.grid.nodes_at_left_edge] = self.Kh_node_child_grid_condition[self.grid.nodes_at_left_edge]
                         self.Kh_node[self.grid.nodes_at_right_edge] = self.Kh_node_child_grid_condition[self.grid.nodes_at_right_edge]
                         self.Kh_node[self.grid.nodes_at_bottom_edge] = self.Kh_node_child_grid_condition[self.grid.nodes_at_bottom_edge]
-                
-                self.copy_values_to_temp()
+
+            self.copy_values_to_temp()
                 
             find_wet_grids(self)
             map_values(
@@ -1261,8 +1261,6 @@ class TurbidityCurrent2D(Component):
                 U_node=self.U_node,
             )
             ### debugging code  ###
-            # if self.count == 59 and self.last == 52 and self.child_grid == True:
-            #     pdb.set_trace()
             # end of debugging code ###
             # Process partial wet grid
             # if self.count == 457:
