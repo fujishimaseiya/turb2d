@@ -558,8 +558,7 @@ def create_topography_from_npy(filename, spacing, config_file=None):
             config = yaml.safe_load(yml)
         spacing = config['grid_param']['grid_spacing']
         filename = config['grid_param']['grid_file']
-    import pdb
-    pdb.set_trace()
+
     ds = np.load(filename)
     topo_data = np.rot90(ds, 1)
     grid = RasterModelGrid(topo_data.shape, xy_spacing=[spacing, spacing])
