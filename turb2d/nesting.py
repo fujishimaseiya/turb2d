@@ -15,7 +15,7 @@ import sys
 class OneWayNesting():
     """Class for one-way nesting."""
 
-    def __init__(self, tc_parent, tc_child, nested_region, parent_grid_file=None, child_grid_file=None, dt=1.0):
+    def __init__(self, tc_parent, tc_child, nested_region, parent_grid_file=None, child_grid_file=None, dt=1.0, num_relaxation_grid=1):
         """Initialize the OneWayNesting class.
 
         Parameters
@@ -41,6 +41,7 @@ class OneWayNesting():
         self.parent_grid_file = parent_grid_file
         self.child_grid_file = child_grid_file
         self.dt = dt
+        self.num_relaxation_grid = num_relaxation_grid
 
         xmin, xmax, ymin, ymax = self.nested_region
         # The extraction of regions by self.nested_region does not work well due to floating point precision.
@@ -60,7 +61,7 @@ class OneWayNesting():
                                     (parent_node_y < ymax)
                                     )
         ### This is the debugging code to check the nested region indices ###
-        self.tc_parent.nested_region_idx = self.nested_region_idx
+        # self.tc_parent.nested_region_idx = self.nested_region_idx
         
     def interp_griddata(self, x, y, parent_values, x_new, y_new, interp_method='linear'):
         """
@@ -299,6 +300,500 @@ class OneWayNesting():
                                                                                            spatial_interp_method='linear')
         elif (self.tc_child.model == '4eq' and self.tc_parent.model != '4eq') or (self.tc_child.model != '4eq' and self.tc_parent.model == '4eq'):
             raise ValueError("The parent grid model must be '4eq' to compute the Kh values for the child grid.")
+        
+    def flow_relaxation_scheme(self):
+        """Flow relaxation scheme (FRS) for the flow variables in the child grid.
+        """
+        num_grid_NS = self.tc_child.grid.shape[0]
+        num_grid_EW = self.tc_child.grid.shape[1]
+
+        # calculate the relaxation parameters if not already calculated
+        has_var = (
+                    hasattr(self, 'relax_param_N_to_S') 
+                    and hasattr(self, 'relax_param_S_to_N') 
+                    and hasattr(self, 'relax_param_E_to_W') 
+                    and hasattr(self, 'relax_param_W_to_E')
+                    )
+        if has_var is False:
+            self.calc_relax_param()
+
+        # initialize the variables for the flow relaxation scheme
+        u_node_relax = self.tc_child.u_node.reshape(self.tc_child.grid.shape[0], self.tc_child.grid.shape[1]).copy()
+        v_node_relax = self.tc_child.v_node.reshape(self.tc_child.grid.shape[0], self.tc_child.grid.shape[1]).copy()
+        h_node_relax = self.tc_child.h.reshape(self.tc_child.grid.shape[0], self.tc_child.grid.shape[1]).copy()
+        bed_thick_node_relax = self.tc_child.bed_thick.reshape(self.tc_child.grid.shape[0], self.tc_child.grid.shape[1]).copy()
+        C_i_node_relax = self.tc_child.C_i.reshape(self.tc_child.C_i.shape[0], self.tc_child.grid.shape[0], self.tc_child.grid.shape[1]).copy()
+        bed_thick_i_node_relax = self.tc_child.bed_thick_i.reshape(self.tc_child.bed_thick_i.shape[0], self.tc_child.grid.shape[0], self.tc_child.grid.shape[1]).copy()
+        if self.tc_child.model == '4eq':
+            Kh_node_relax = self.tc_child.Kh_node.reshape(self.tc_child.grid.shape[0], self.tc_child.grid.shape[1]).copy()
+        
+        # calculate the variables using Flow Relaxation Scheme
+        # ここから，relax valueを求めるところをカプセル化してすべての変数に適用．
+        end_internal_region_x = self.tc_child.grid.shape[1] - (self.num_relaxation_grid + 1)
+
+        u_node_relax[:, :] = self.apply_flow_relaxation_scheme(u_node_relax, 
+                                                          end_internal_region_x)
+        v_node_relax[:, :] = self.apply_flow_relaxation_scheme(v_node_relax,
+                                                          end_internal_region_x)
+        h_node_relax[:, :] = self.apply_flow_relaxation_scheme(h_node_relax,
+                                                          end_internal_region_x)
+        # bed_thick_node_relax[:, :] = self.apply_flow_relaxation_scheme(bed_thick_node_relax,
+        #                                                   end_internal_region_x)
+        for i in range(self.tc_child.C_i.shape[0]):
+            C_i_node_relax[i, :, :] = self.apply_flow_relaxation_scheme(C_i_node_relax[i, :, :],
+                                                          end_internal_region_x)
+            bed_thick_i_node_relax[i, :, :] = self.apply_flow_relaxation_scheme(bed_thick_i_node_relax[i, :, :],
+                                                          end_internal_region_x)
+        if self.tc_child.model == '4eq':
+            Kh_node_relax[:, :] = self.apply_flow_relaxation_scheme(Kh_node_relax,
+                                                          end_internal_region_x)
+            
+        # mask the FRS zone in the child grid
+        mask_frs_zone = np.ones((num_grid_NS, num_grid_EW), dtype=bool)
+        mask_frs_zone[self.num_relaxation_grid:-self.num_relaxation_grid, self.num_relaxation_grid:-self.num_relaxation_grid] = False
+        mask_frs_zone = mask_frs_zone.flatten()
+        # update the child grid variables in the FRS zone
+        self.tc_child.u_node[mask_frs_zone] = u_node_relax.flatten()[mask_frs_zone]
+        self.tc_child.v_node[mask_frs_zone] = v_node_relax.flatten()[mask_frs_zone]
+        self.tc_child.h[mask_frs_zone] = h_node_relax.flatten()[mask_frs_zone]
+        self.tc_child.C_i[:, mask_frs_zone] = C_i_node_relax.reshape(self.tc_child.C_i.shape[0], -1)[:, mask_frs_zone]
+        self.tc_child.C[:] = np.sum(self.tc_child.C_i, axis=0)
+        self.tc_child.bed_thick_i[:, mask_frs_zone] = bed_thick_i_node_relax.reshape(self.tc_child.bed_thick_i.shape[0], -1)[:, mask_frs_zone]
+        self.tc_child.bed_thick[:] = np.sum(self.tc_child.bed_thick_i, axis=0)
+        if self.tc_child.model == '4eq':
+            self.tc_child.Kh_node[mask_frs_zone] = Kh_node_relax.flatten()[mask_frs_zone]
+
+
+    def calc_relaxed_values(self, 
+                            values,
+                            values_east, 
+                            values_west, 
+                            values_south, 
+                            values_north, 
+                            start_x_idx, 
+                            end_x_idx, 
+                            start_y_idx, 
+                            end_y_idx, 
+                            relax_param_NS, 
+                            relax_param_SN, 
+                            relax_param_EW, 
+                            relax_param_WE):
+
+        """Calculate values at flow relaxation zone
+
+        Parameters
+        ----------
+        values : np.ndarray
+            Values to be updated.
+
+        values_east : np.ndarray
+            Values at east end for relaxation calculation.
+
+        values_west : np.ndarray
+            Values at west end for relaxation calculation.
+
+        values_south : np.ndarray
+            Values at south end for relaxation calculation.
+
+        values_north : np.ndarray
+            Values at north end for relaxation calculation.
+
+        start_x_idx : int
+            Starting x-index of the calculation region.
+
+        end_x_idx : int
+            Ending x-index of the calculation region.
+
+        start_y_idx : int
+            Starting y-index of the calculation region.
+
+        end_y_idx : int
+            Ending y-index of the calculation region.
+        """
+
+        values_in_frs_zone = (relax_param_NS*values_north + (1 - relax_param_NS)*values[(start_y_idx):end_y_idx, (start_x_idx):end_x_idx] 
+                              + relax_param_SN*values_south + (1 - relax_param_SN)*values[(start_y_idx):end_y_idx, (start_x_idx):end_x_idx] 
+                              + relax_param_EW*values_east + (1 - relax_param_EW)*values[(start_y_idx):end_y_idx, (start_x_idx):end_x_idx] 
+                              + relax_param_WE*values_west + (1 - relax_param_WE)*values[(start_y_idx):end_y_idx, (start_x_idx):end_x_idx]
+                              ) / 4
+
+        return values_in_frs_zone
+
+    def apply_flow_relaxation_scheme(
+            self, 
+            hyd_value, 
+            end_internal_region_x
+    ):
+        
+        """Calculate the values at the FRS zone.
+        # ---- # ---- $ ---- $ ---- $ ---- $ ---- $ ---- $ ---- @ ---- @
+        |      |      |      |      |      |      |      |      |      |
+        #             $                                  $             @
+        |   Region1   |            Region 2              |   Region 3  |
+        #             $                                  $             @ 
+        |      |      |      |      |      |      |      |      |      |
+        ^ ---- ^ ---- % ~~~~ % ~~~~ % ~~~~ % ~~~~ % ~~~~ % ---- & ---- &
+        |      |      ~      ~      ~      ~      ~      ~      |      |
+        *             % ---- % ---- % ---- % ---- % ---- %             &
+        |             ~      ~      ~      ~      ~      ~             |
+        *   Region 4  % ----  internal zone  ---- % ---- %   Region 5  &
+        |             ~      ~      ~      ~      ~      ~             |
+        *             % ---- % ---- % ---- % ---- % ---- %             &
+        |      |      ~      ~      ~      ~      ~      ~      |      |
+        ^ ---- ^ ---- % ~~~~ % ~~~~ % ~~~~ % ~~~~ % ~~~~ % ---- & ---- &
+        |      |      |      |      |      |      |      |      |      |
+        +             ?                                  ?             >
+        |   Region 6  |            Region 7              |   Region 8  |
+        +             ?                                  ?             >
+        |      |      |      |      |      |      |      |      |      |
+        + ---- + ---- ? ---- ? ---- ? ---- ? ---- ? ---- ? ---- > ---- >
+
+        """
+
+        values_in_frs_zone = hyd_value.copy()
+
+        # relaxation using the boundary values only
+        # values_in_frs_zone[:, :] = self.calc_relaxed_values(values=hyd_value,
+        #                                                     values_east=hyd_value[:, -1],
+        #                                                     values_west=hyd_value[:, 0],
+        #                                                     values_south=hyd_value[-1, :],
+        #                                                     values_north=hyd_value[0, :],
+        #                                                     start_x_idx=0,
+        #                                                     end_x_idx=None,
+        #                                                     start_y_idx=0,
+        #                                                     end_y_idx=None,
+        #                                                     relax_param_NS=self.relax_param_NS_external_external,
+        #                                                     relax_param_SN=self.relax_param_SN_external_external,
+        #                                                     relax_param_EW=self.relax_param_EW_external_external,
+        #                                                     relax_param_WE=self.relax_param_WE_external_external
+        #                                                     )
+        # mask = np.ones_like(values_in_frs_zone, dtype=bool)
+        # mask[self.num_relaxation_grid:-self.num_relaxation_grid, self.num_relaxation_grid:-self.num_relaxation_grid] = False
+        # hyd_value[mask] = values_in_frs_zone[mask]
+
+        # Region 1
+        # region1_start_x = 0
+        # region1_end_x = self.num_relaxation_grid
+        # region1_start_y = 0
+        # region1_end_y = self.num_relaxation_grid
+        # # Region 1
+        # values_in_frs_zone[(region1_start_y+1):region1_end_y, 
+        #                    (region1_start_x+1):region1_end_x] = self.calc_relaxed_values(values=hyd_value,
+        #                                                                                  values_east=hyd_value[(region1_start_y+1):region1_end_y, -1],
+        #                                                                                  values_west=hyd_value[(region1_start_y+1):region1_end_y, 0],
+        #                                                                                  values_south=hyd_value[-1, (region1_start_x+1):region1_end_x],
+        #                                                                                  values_north=hyd_value[0, (region1_start_x+1):region1_end_x],
+        #                                                                                  start_x_idx=(region1_start_x+1),
+        #                                                                                  end_x_idx=region1_end_x,
+        #                                                                                  start_y_idx=(region1_start_y+1),
+        #                                                                                  end_y_idx=region1_end_y,
+        #                                                                                  relax_param_NS=self.relax_param_NS_external_external[(region1_start_y+1):region1_end_y, 
+        #                                                                                                                                       (region1_start_x+1):region1_end_x],
+        #                                                                                  relax_param_SN=self.relax_param_SN_external_external[(region1_start_y+1):region1_end_y, 
+        #                                                                                                                                       (region1_start_x+1):region1_end_x],
+        #                                                                                  relax_param_EW=self.relax_param_EW_external_external[(region1_start_y+1):region1_end_y, 
+        #                                                                                                                                       (region1_start_x+1):region1_end_x],
+        #                                                                                  relax_param_WE=self.relax_param_WE_external_external[(region1_start_y+1):region1_end_y, 
+        #                                                                                                                                       (region1_start_x+1):region1_end_x]
+        #                                                                                 )
+        # values_in_frs_zone[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x] = \
+        # (
+        #     self.relax_param_NS_external_external[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x]
+        #         * hyd_value[0, (region1_start_x+1):region1_end_x] \
+        #             + (1 - self.relax_param_NS_external_external[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x])
+        #             * hyd_value[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x]
+        #     + self.relax_param_SN_external_external[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x]
+        #         *hyd_value[-1, (region1_start_x+1):region1_end_x] \
+        #             + (1 - self.relax_param_SN_external_external[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x])
+        #             *hyd_value[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x]
+        #     + self.relax_param_EW_external_external[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x]
+        #         *hyd_value[(region1_start_y+1):region1_end_y, 0] \
+        #             + (1 - self.relax_param_EW_external_external[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x])
+        #             *hyd_value[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x]
+        #     + self.relax_param_WE_external_external[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x]
+        #         *hyd_value[(region1_start_y+1):region1_end_y, -1] \
+        #             + (1 - self.relax_param_WE_external_external[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x])
+        #             *hyd_value[(region1_start_y+1):region1_end_y, (region1_start_x+1):region1_end_x]         
+        # ) / 4
+        # Region 2
+        region2_start_x = self.num_relaxation_grid
+        region2_end_x = end_internal_region_x + 1
+        region2_start_y = 0
+        region2_end_y = self.num_relaxation_grid
+        values_in_frs_zone[(region2_start_y+1):region2_end_y, 
+                           region2_start_x:region2_end_x] = self.calc_relaxed_values(values=hyd_value,
+                                                                                     values_east=hyd_value[(region2_start_y+1):region2_end_y, -1][:, None],
+                                                                                     values_west=hyd_value[(region2_start_y+1):region2_end_y, 0][:, None],
+                                                                                     values_south=hyd_value[region2_end_y+1, region2_start_x:region2_end_x],
+                                                                                     values_north=hyd_value[0, region2_start_x:region2_end_x],
+                                                                                     start_x_idx=region2_start_x,
+                                                                                     end_x_idx=region2_end_x,
+                                                                                     start_y_idx=(region2_start_y+1),
+                                                                                     end_y_idx=region2_end_y,
+                                                                                     relax_param_NS=self.relax_param_NS_external_internal[(region2_start_y+1):, :],
+                                                                                     relax_param_SN=self.relax_param_SN_external_internal[(region2_start_y+1):, :],
+                                                                                     relax_param_EW=self.relax_param_EW_external_external[(region2_start_y+1):region2_end_y, 
+                                                                                                                                          region2_start_x:region2_end_x],
+                                                                                     relax_param_WE=self.relax_param_WE_external_external[(region2_start_y+1):region2_end_y, 
+                                                                                                                                          region2_start_x:region2_end_x]
+                                                                                    )
+        
+        # region2_start_x = self.num_relaxation_grid
+        # region2_end_x = end_internal_region_x
+        # region2_start_y = 0
+        # region2_end_y = self.num_relaxation_grid
+        # values_in_frs_zone[(region2_start_y+1):region2_end_y, region2_start_x:region2_end_x] = (
+        #     self.relax_param_NS_external_internal[(region2_start_y+1):, :]*hyd_value[0, region2_start_x:region2_end_x] \
+        #         + (1 - self.relax_param_NS_external_internal[(region2_start_y+1):, :])*hyd_value[region2_end_y, region2_start_x:region2_end_x]
+        #     + self.relax_param_EW_external_external[(region2_start_y+1):region2_end_y, region2_start_x:region2_end_x]*hyd_value[(region2_start_y+1):region2_end_y, 0][:, None] \
+        #         + (1 - self.relax_param_EW_external_external[(region2_start_y+1):region2_end_y, region2_start_x:region2_end_x])*hyd_value[(region2_start_y+1):region2_end_y, -1][:, None]
+        # ) / 2
+        # Region 3
+        # region3_start_x = end_internal_region_x + 1
+        # region3_end_x = -1
+        # region3_start_y = 0
+        # region3_end_y = self.num_relaxation_grid        
+        # values_in_frs_zone[(region3_start_y+1):region3_end_y, region3_start_x:region3_end_x] = (
+        #         self.relax_param_NS_external_external[(region3_start_y+1):region3_end_y, region3_start_x:region3_end_x]*hyd_value[0, region3_start_x:region3_end_x] \
+        #             + (1 - self.relax_param_NS_external_external[(region3_start_y+1):region3_end_y, region3_start_x:region3_end_x])*hyd_value[-1, region3_start_x:region3_end_x]
+        #         + self.relax_param_EW_external_external[(region3_start_y+1):region3_end_y, region3_start_x:region3_end_x]*hyd_value[(region3_start_y+1):region3_end_y, 0] \
+        #             + (1 - self.relax_param_EW_external_external[(region3_start_y+1):region3_end_y, region3_start_x:region3_end_x])*hyd_value[(region3_start_y+1):region3_end_y, -1]
+        #     ) / 2
+        # values_in_frs_zone[(region3_start_y+1):region3_end_y, 
+        #                    region3_start_x:region3_end_x] = self.calc_relaxed_values(values=hyd_value,
+        #                                                                              values_east=hyd_value[(region3_start_y+1):region3_end_y, -1],
+        #                                                                              values_west=hyd_value[(region3_start_y+1):region3_end_y, 0],
+        #                                                                              values_south=hyd_value[-1, region3_start_x:region3_end_x],
+        #                                                                              values_north=hyd_value[0, region3_start_x:region3_end_x],
+        #                                                                              start_x_idx=region3_start_x,
+        #                                                                              end_x_idx=region3_end_x,
+        #                                                                              start_y_idx=(region3_start_y+1),
+        #                                                                              end_y_idx= region3_end_y,
+        #                                                                              relax_param_NS=self.relax_param_NS_external_external[(region3_start_y+1):region3_end_y, 
+        #                                                                                                                                   region3_start_x:region3_end_x],
+        #                                                                              relax_param_SN=self.relax_param_SN_external_external[(region3_start_y+1):region3_end_y,
+        #                                                                                                                                   region3_start_x:region3_end_x],
+        #                                                                              relax_param_EW=self.relax_param_EW_external_external[(region3_start_y+1):region3_end_y,
+        #                                                                                                                                   region3_start_x:region3_end_x],
+        #                                                                              relax_param_WE=self.relax_param_WE_external_external[(region3_start_y+1):region3_end_y,
+        #                                                                                                                                   region3_start_x:region3_end_x]
+        #                                                                             )
+        # Region 4
+        region4_start_x = 0
+        region4_end_x = self.num_relaxation_grid
+        region4_start_y = self.num_relaxation_grid
+        region4_end_y = self.tc_child.grid.shape[0] - self.num_relaxation_grid      
+        # values_in_frs_zone[region4_start_y:region4_end_y, (region4_start_x+1):region4_end_x] = ( 
+        #         self.relax_param_NS_external_external[region4_start_y:region4_end_y, (region4_start_x+1):region4_end_x]*hyd_value[0, (region4_start_x+1):region4_end_x] \
+        #             + (1 - self.relax_param_NS_external_external[region4_start_y:region4_end_y, (region4_start_x+1):region4_end_x])*hyd_value[-1, (region4_start_x+1):region4_end_x]
+        #         + self.relax_param_WE_external_internal[:, (region4_start_x+1):]*hyd_value[region4_start_y:region4_end_y, 0][:, None] \
+        #             + (1 - self.relax_param_WE_external_internal[:, (region4_start_x+1):])*hyd_value[region4_start_y:region4_end_y, region4_end_x][:, None]
+        #     ) / 2
+        values_in_frs_zone[region4_start_y:region4_end_y, 
+                           (region4_start_x+1):region4_end_x] = self.calc_relaxed_values(values=hyd_value,
+                                                                                         values_east=hyd_value[region4_start_y:region4_end_y, region4_end_x+1][:, None],
+                                                                                         values_west=hyd_value[region4_start_y:region4_end_y, 0][:, None],
+                                                                                         values_south=hyd_value[-1, (region4_start_x+1):region4_end_x],
+                                                                                         values_north=hyd_value[0, (region4_start_x+1):region4_end_x],
+                                                                                         start_x_idx=(region4_start_x+1),
+                                                                                         end_x_idx=region4_end_x,
+                                                                                         start_y_idx=region4_start_y,
+                                                                                         end_y_idx= region4_end_y,
+                                                                                         relax_param_NS=self.relax_param_NS_external_external[region4_start_y:region4_end_y,
+                                                                                                                                              (region4_start_x+1):region4_end_x],
+                                                                                         relax_param_SN=self.relax_param_SN_external_external[region4_start_y:region4_end_y,
+                                                                                                                                              (region4_start_x+1):region4_end_x],
+                                                                                         relax_param_EW=self.relax_param_EW_external_internal[:, (region4_start_x+1):],
+                                                                                         relax_param_WE=self.relax_param_WE_external_internal[:, (region4_start_x+1):],
+                                                                                        )
+        # Region 5
+        # pdb.set_trace()
+        region5_start_x = end_internal_region_x + 1
+        region5_end_x = -1
+        region5_start_y = self.num_relaxation_grid
+        region5_end_y = self.tc_child.grid.shape[0] - self.num_relaxation_grid  
+        # values_in_frs_zone[region5_start_y:region5_end_y, region5_start_x:region5_end_x] = (
+        #         self.relax_param_NS_external_external[region5_start_y:region5_end_y, region5_start_x:region5_end_x]*hyd_value[0, region5_start_x:region5_end_x] \
+        #             + (1 - self.relax_param_NS_external_external[region5_start_y:region5_end_y, region5_start_x:region5_end_x])*hyd_value[-1, region5_start_x:region5_end_x]
+        #         + (1 - self.relax_param_EW_external_internal[:, :region5_end_x])*hyd_value[region5_start_y:region5_end_y, region5_start_x][:, None] \
+        #             + self.relax_param_EW_external_internal[:, :region5_end_x]*hyd_value[region5_start_y:region5_end_y, -1][:, None]
+        #     ) / 2
+        values_in_frs_zone[region5_start_y:region5_end_y, 
+                           region5_start_x:region5_end_x] = self.calc_relaxed_values(values=hyd_value,
+                                                                                     values_east=hyd_value[region5_start_y:region5_end_y, -1][:, None],
+                                                                                     values_west=hyd_value[region5_start_y:region5_end_y, region5_start_x-1][:, None],
+                                                                                     values_south=hyd_value[-1, region5_start_x:region5_end_x],
+                                                                                     values_north=hyd_value[0, region5_start_x:region5_end_x],
+                                                                                     start_x_idx=region5_start_x,
+                                                                                     end_x_idx=region5_end_x,
+                                                                                     start_y_idx=region5_start_y,
+                                                                                     end_y_idx= region5_end_y,
+                                                                                     relax_param_NS=self.relax_param_NS_external_external[region5_start_y:region5_end_y, 
+                                                                                                                                          region5_start_x:region5_end_x],
+                                                                                     relax_param_SN=self.relax_param_SN_external_external[region5_start_y:region5_end_y,
+                                                                                                                                          region5_start_x:region5_end_x],
+                                                                                     relax_param_EW=self.relax_param_EW_external_internal[:, :region5_end_x],
+                                                                                     relax_param_WE= self.relax_param_WE_external_internal[:, 1:]
+                                                                                    )
+        # Region 6
+        # region6_start_x = 0
+        # region6_end_x = self.num_relaxation_grid
+        # region6_start_y = (self.tc_child.grid.shape[0] - self.num_relaxation_grid)
+        # region6_end_y = -1    
+        # values_in_frs_zone[region6_start_y:region6_end_y, (region6_start_x+1):region6_end_x] = (   
+        #         self.relax_param_NS_external_external[region6_start_y:region6_end_y, (region6_start_x+1):region6_end_x]*hyd_value[0, (region6_start_x+1):region6_end_x]\
+        #              + (1 - self.relax_param_NS_external_external[region6_start_y:region6_end_y, (region6_start_x+1):region6_end_x])*hyd_value[-1, (region6_start_x+1):region6_end_x]
+        #         + self.relax_param_EW_external_external[region6_start_y:region6_end_y, (region6_start_x+1):region6_end_x]*hyd_value[region6_start_y:region6_end_y, 0]\
+        #              + (1 - self.relax_param_EW_external_external[region6_start_y:region6_end_y, (region6_start_x+1):region6_end_x])*hyd_value[region6_start_y:region6_end_y, -1]
+        #     ) / 2
+        # values_in_frs_zone[region6_start_y:region6_end_y, 
+        #                    (region6_start_x+1):region6_end_x] = self.calc_relaxed_values(values=hyd_value,
+        #                                                                                  values_east=hyd_value[region6_start_y:region6_end_y, -1],
+        #                                                                                  values_west=hyd_value[region6_start_y:region6_end_y, 0],
+        #                                                                                  values_south=hyd_value[-1, (region6_start_x+1):region6_end_x],
+        #                                                                                  values_north=hyd_value[0, (region6_start_x+1):region6_end_x],
+        #                                                                                  start_x_idx=(region6_start_x+1),
+        #                                                                                  end_x_idx=region6_end_x,
+        #                                                                                  start_y_idx= region6_start_y,
+        #                                                                                  end_y_idx= region6_end_y,
+        #                                                                                  relax_param_NS=self.relax_param_NS_external_external[region6_start_y:region6_end_y, 
+        #                                                                                                                                       (region6_start_x+1):region6_end_x],
+        #                                                                                  relax_param_SN=self.relax_param_SN_external_external[region6_start_y:region6_end_y, 
+        #                                                                                                                                       (region6_start_x+1):region6_end_x],
+        #                                                                                  relax_param_EW=self.relax_param_EW_external_external[region6_start_y:region6_end_y,
+        #                                                                                                                                       (region6_start_x+1):region6_end_x],
+        #                                                                                  relax_param_WE=self.relax_param_WE_external_external[region6_start_y:region6_end_y,
+        #                                                                                                                                       (region6_start_x+1):region6_end_x]
+        #                                                                                 )
+        # Region 7
+        region7_start_x = self.num_relaxation_grid
+        region7_end_x = end_internal_region_x + 1
+        region7_start_y = (self.tc_child.grid.shape[0] - self.num_relaxation_grid)
+        region7_end_y = -1
+        # values_in_frs_zone[region7_start_y:region7_end_y, region7_start_x:region7_end_x] = (
+        #     (1 - self.relax_param_SN_external_internal[:region7_end_y, :])*hyd_value[region7_start_y, region7_start_x:region7_end_x]\
+        #           + self.relax_param_SN_external_internal[:region7_end_y, :]*hyd_value[-1, region7_start_x:region7_end_x]
+        #     + self.relax_param_EW_external_external[region7_start_y:region7_end_y, region7_start_x:region7_end_x]*hyd_value[region7_start_y:region7_end_y, 0][:, None]\
+        #           + (1 - self.relax_param_EW_external_external[region7_start_y:region7_end_y, region7_start_x:region7_end_x])*hyd_value[region7_start_y:region7_end_y, -1][:, None]
+        # ) / 2
+        values_in_frs_zone[region7_start_y:region7_end_y, 
+                           region7_start_x:region7_end_x] = self.calc_relaxed_values(values=hyd_value,
+                                                                                     values_east=hyd_value[region7_start_y:region7_end_y, -1][:, None],
+                                                                                     values_west=hyd_value[region7_start_y:region7_end_y, 0][:, None],
+                                                                                     values_south=hyd_value[-1, region7_start_x:region7_end_x],
+                                                                                     values_north=hyd_value[region7_start_y-1, region7_start_x:region7_end_x],
+                                                                                     start_x_idx=region7_start_x,
+                                                                                     end_x_idx=region7_end_x,
+                                                                                     start_y_idx=region7_start_y,
+                                                                                     end_y_idx= region7_end_y,
+                                                                                     relax_param_NS=self.relax_param_NS_external_internal[:region7_end_y, :],
+                                                                                     relax_param_SN=self.relax_param_SN_external_internal[:region7_end_y, :],
+                                                                                     relax_param_EW=self.relax_param_EW_external_external[region7_start_y:region7_end_y,
+                                                                                                                                          region7_start_x:region7_end_x],
+                                                                                     relax_param_WE=self.relax_param_WE_external_external[region7_start_y:region7_end_y,
+                                                                                                                                          region7_start_x:region7_end_x]
+                                                                                    )
+
+        # Region 8
+        # region8_start_x = end_internal_region_x + 1
+        # region8_end_x = -1
+        # region8_start_y = (self.tc_child.grid.shape[0] - self.num_relaxation_grid)
+        # region8_end_y = -1
+        # values_in_frs_zone[region8_start_y:region8_end_y, region8_start_x:region8_end_x] = (
+        #         self.relax_param_NS_external_external[region8_start_y:region8_end_y, region8_start_x:region8_end_x]*hyd_value[0, region8_start_x:region8_end_x]\
+        #               + (1 - self.relax_param_NS_external_external[region8_start_y:region8_end_y, region8_start_x:region8_end_x])*hyd_value[-1, region8_start_x:region8_end_x]
+        #         + self.relax_param_EW_external_external[region8_start_y:region8_end_y, region8_start_x:region8_end_x]*hyd_value[region8_start_y:region8_end_y, 0]\
+        #               + (1 - self.relax_param_EW_external_external[region8_start_y:region8_end_y, region8_start_x:region8_end_x])*hyd_value[region8_start_y:region8_end_y, -1]
+        #     ) / 2
+        # values_in_frs_zone[region8_start_y:region8_end_y, 
+        #                    region8_start_x:region8_end_x] = self.calc_relaxed_values(values=hyd_value,
+        #                                                                              values_east=hyd_value[region8_start_y:region8_end_y, -1],
+        #                                                                              values_west= hyd_value[region8_start_y:region8_end_y, 0],
+        #                                                                              values_south=hyd_value[-1, region8_start_x:region8_end_x],
+        #                                                                              values_north=hyd_value[0, region8_start_x:region8_end_x],
+        #                                                                              start_x_idx=region8_start_x,
+        #                                                                              end_x_idx=region8_end_x,
+        #                                                                              start_y_idx=region8_start_y,
+        #                                                                              end_y_idx=region8_end_y,
+        #                                                                              relax_param_NS=self.relax_param_NS_external_external[region8_start_y:region8_end_y, 
+        #                                                                                                                                   region8_start_x:region8_end_x],
+        #                                                                              relax_param_SN=self.relax_param_SN_external_external[region8_start_y:region8_end_y,
+        #                                                                                                                                   region8_start_x:region8_end_x],
+        #                                                                              relax_param_EW=self.relax_param_EW_external_external[region8_start_y:region8_end_y,
+        #                                                                                                                                   region8_start_x:region8_end_x],
+        #                                                                              relax_param_WE=self.relax_param_WE_external_external[region8_start_y:region8_end_y,
+        #                                                                                                                                   region8_start_x:region8_end_x]
+        #                                                                             )
+        
+        # intepolate data at corners of the relaxation zone
+        x = np.arange(self.tc_child.grid.shape[1])
+        y = np.arange(self.tc_child.grid.shape[0])
+        X, Y = np.meshgrid(x, y)
+        Z = values_in_frs_zone.copy()
+
+        # mask cornars of the relaxation zone
+        mask = (
+            (1 <= X) & (X <= self.num_relaxation_grid) & (1 <= Y) & (Y <= self.num_relaxation_grid) # region 1
+            & (end_internal_region_x + 1 < X) & (X < self.tc_child.grid.shape[1]) & (1 <= Y) & (Y <= self.num_relaxation_grid) # region 3
+            & (1 <= X) & (X <= self.num_relaxation_grid) & ((self.tc_child.grid.shape[0] - self.num_relaxation_grid) <= Y) & (Y < self.tc_child.grid.shape[0]) # region 6
+            & (end_internal_region_x + 1 <= X) & (X < self.tc_child.grid.shape[1]) & ((self.tc_child.grid.shape[0] - self.num_relaxation_grid) <= Y) & (Y < self.tc_child.grid.shape[0]) # region 8
+        )
+        Z[mask] = np.nan  # Set corners to NaN for interpolation
+
+        known_mask = ~np.isnan(Z)
+        x_known = X[known_mask]
+        y_known = Y[known_mask]
+        z_known = Z[known_mask]
+        points_all = np.column_stack([X.ravel(), Y.ravel()])
+
+        Z_filled = griddata(points=np.column_stack([x_known, y_known]),
+                            values=z_known,
+                            xi=points_all,method='linear'
+                            ).reshape(values_in_frs_zone.shape[0], values_in_frs_zone.shape[1])
+        frs_interpolated = Z_filled
+
+        if np.any(np.isnan(frs_interpolated)):
+            raise ValueError("Interpolation failed, NaN values found in the relaxation zone.")
+        
+        return frs_interpolated
+
+    def calc_relax_param(self):
+        """Calculate the relaxation parameter based on Equation (4) in Martinsen and Engedahl (1987).
+        This method calculates the relaxation parameter based on the number of grid nodes in the child grid.
+        """
+        num_grid_NS = self.tc_child.grid.shape[0]
+        num_grid_EW = self.tc_child.grid.shape[1]
+        num_xgrid_NS_external_internal = self.tc_child.grid.shape[1] - self.num_relaxation_grid*2
+        num_ygrid_NS_external_internal = self.num_relaxation_grid
+        num_xgrid_EW_external_internal = self.num_relaxation_grid
+        num_ygrid_EW_external_internal = self.tc_child.grid.shape[0] - self.num_relaxation_grid*2
+
+        # relaxation parameter based on Martinsen and Engedahl (1987)
+        self.relax_param_NS_external_external = np.zeros((num_grid_NS, num_grid_EW))
+        self.relax_param_SN_external_external = np.zeros_like(self.relax_param_NS_external_external)
+        self.relax_param_NS_external_internal = np.zeros((num_ygrid_NS_external_internal, num_xgrid_NS_external_internal))
+        self.relax_param_SN_external_internal = np.zeros_like(self.relax_param_NS_external_internal)
+        self.relax_param_EW_external_external = np.zeros((num_grid_NS, num_grid_EW))
+        self.relax_param_WE_external_external = np.zeros_like(self.relax_param_EW_external_external)
+        self.relax_param_EW_external_internal = np.zeros((num_ygrid_EW_external_internal, num_xgrid_EW_external_internal))
+        self.relax_param_WE_external_internal = np.zeros_like(self.relax_param_EW_external_internal)
+
+        # calculate the relaxation parameter for grid nodes between the external boundaries of a child grid
+        for i in range(1, num_grid_NS+1):
+            # self.relax_param_NS_external_external[i-1, :] = ((num_grid_NS - i + 1)/num_grid_NS)**2
+            self.relax_param_NS_external_external[i-1, :] = 1 - np.tanh((i-1)/2)
+        self.relax_param_SN_external_external[:, :] = np.flipud(self.relax_param_NS_external_external)
+        self.relax_param_EW_external_external[:, :] = self.relax_param_NS_external_external[:, :].T
+        self.relax_param_WE_external_external[:, :] = np.fliplr(self.relax_param_EW_external_external)
+
+        # calculate the relaxation parameter for grid nodes between the external boundary and the interior of the child grid
+        for i in range(1, self.num_relaxation_grid+1):
+            # self.relax_param_NS_external_internal[i-1, :] = ((self.num_relaxation_grid - i + 1)/self.num_relaxation_grid)**2
+            self.relax_param_NS_external_internal[i-1, :] = 1 - np.tanh((i-1)/2)
+        self.relax_param_SN_external_internal[:, :] = np.flipud(self.relax_param_NS_external_internal)
+        self.relax_param_WE_external_internal[:, :] = self.relax_param_NS_external_internal[:, :].T
+        self.relax_param_EW_external_internal[:, :] = np.fliplr(self.relax_param_WE_external_internal)
+
 
 class TwoWayNesting(OneWayNesting):
     """Class for two-way nesting."""

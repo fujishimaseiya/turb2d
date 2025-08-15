@@ -951,7 +951,7 @@ class TurbidityCurrent2D(Component):
 
         return dt_local
 
-    def run_one_step(self, dt=None, repeat=None, last=None):
+    def run_one_step(self, dt=None, repeat=None, last=None, one_way_nesting_method=None):
         """Generate a turbidity current across a grid.
 
         For one time step, this generates 'turbidity current' across
@@ -1171,6 +1171,9 @@ class TurbidityCurrent2D(Component):
                         self.Kh_node[self.grid.nodes_at_right_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
                         self.Kh_node[self.grid.nodes_at_bottom_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
 
+                if one_way_nesting_method is not None:
+                    one_way_nesting_method.flow_relaxation_scheme()
+                                    
             elif (self.two_way_nesting is True) and (self.parent_grid is False) and (self.child_grid is True):
                 num_nonzero = np.count_nonzero(self.h_node_child_grid_condition[:])
                 num_nan = np.count_nonzero(np.isnan(self.h_node_child_grid_condition[:]))
