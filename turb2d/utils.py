@@ -273,8 +273,17 @@ def create_nested_grid(config_file=None,
         parent_grid = create_topography_from_npy(filename=parent_grid_file, spacing=parent_grid_spacing)
 
     # Initialize the child grid
-    # lgrids = (ymax - ymin) / child_grid_spacing
-    # wgrids = (xmax - xmin) / child_grid_spacing
+    # If xmin, xmax, ymin and ymax are not multiples of the spacing of parent grid, 
+    # adjust them to the nearest multiple of the parent grid.
+    if ymax % parent_grid_spacing != 0:
+        ymax = round(float(ymax) / float(parent_grid_spacing)) * parent_grid_spacing
+    if ymin % parent_grid_spacing != 0:
+        ymin = round(float(ymin) / float(parent_grid_spacing)) * parent_grid_spacing
+    if xmax % parent_grid_spacing != 0:
+        xmax = round(float(xmax) / float(parent_grid_spacing)) * parent_grid_spacing
+    if xmin % parent_grid_spacing != 0:
+        xmin = round(float(xmin) / float(parent_grid_spacing)) * parent_grid_spacing
+
     ymax = Decimal(str(ymax))
     ymin = Decimal(str(ymin))
     xmax = Decimal(str(xmax))
@@ -320,7 +329,7 @@ def create_nested_grid(config_file=None,
     child_topo = interp(list(zip(child_grid.node_x, child_grid.node_y)))
     child_grid.at_node["topographic__elevation"] = child_topo
 
-    return parent_grid, child_grid
+    return parent_grid, child_grid, nested_region_idx
 
 def create_child_grid_from_npy(config_file=None, parent_grid_file=None, parent_spacing=0.01, nested_region=[0.5, 1.5, 0.5, 1.5], child_grid_spacing=0.01):
     # open configuration file
