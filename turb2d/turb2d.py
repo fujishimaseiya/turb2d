@@ -618,6 +618,19 @@ class TurbidityCurrent2D(Component):
         except FieldError:
             self.Fr = grid.at_node["Densimetric_Froude_number"]
 
+        try:
+            self.tau_star = np.empty([self.number_gclass, grid.number_of_nodes])
+            for i in range(self.number_gclass):
+                self.tau_star[i, :] = grid.add_zeros(
+                    "Shields_number_" + str(i),
+                    at="node",
+                    units='',
+                )
+        except FieldError:
+            for i in range(self.number_gclass):
+                self.tau_star[i,
+                         :] = grid.at_node["Shields_number_" + str(i)]
+
         self.h += self.h_init
         self.C += self.C_init
         self.Ch += self.h_init * self.C_init
@@ -1110,6 +1123,7 @@ class TurbidityCurrent2D(Component):
                 idx = np.argmin(np.abs(self.time_interp-self.local_elapsed_time))
                 num_nonzero = np.count_nonzero(self.h_node_child_grid_condition[idx, :])
                 num_nan = np.count_nonzero(np.isnan(self.h_node_child_grid_condition[idx, :]))
+
                 if num_nan > 0:
                     raise ValueError("There are NaN values in the child grid condition array. Please check the input data.")
                 elif self.first_nesting is True and num_nonzero > 0:
@@ -1123,8 +1137,9 @@ class TurbidityCurrent2D(Component):
                         self.Ch_i[j, :] = self.C_i[j, :] * self.h
                     self.C[:] = np.sum(self.C_i, axis=0)
                     self.Ch[:] = np.sum(self.Ch_i, axis=0)
-                    self.bed_thick[:] = self.bed_thick_node_child_grid_condition[idx, :]
+                    # self.bed_thick[:] = self.bed_thick_node_child_grid_condition[idx, :]
                     self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[idx, :, :]
+                    self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
                     if self.model == '4eq':
                         self.Kh_node[:] = self.Kh_node_child_grid_condition[idx, :]
                     self.first_nesting = False
@@ -1160,10 +1175,11 @@ class TurbidityCurrent2D(Component):
 
                     self.C[:] = np.sum(self.C_i, axis=0)
                     self.Ch[:] = np.sum(self.Ch_i, axis=0)
-                    self.bed_thick[self.grid.nodes_at_top_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
-                    self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
-                    self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
-                    self.bed_thick[self.grid.nodes_at_bottom_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
+                    self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
+                    # self.bed_thick[self.grid.nodes_at_top_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
+                    # self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
+                    # self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
+                    # self.bed_thick[self.grid.nodes_at_bottom_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
 
                     if self.model == '4eq':
                         self.Kh_node[self.grid.nodes_at_top_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
@@ -1272,8 +1288,6 @@ class TurbidityCurrent2D(Component):
 
             # calculate non-advection terms using implicit method
             self._nonadvection_phase()
-            # if np.any(self.Ch_i_temp > 1.):
-            #     pdb.set_trace()
 
             # calculate advection terms using cip method
             self._advection_phase()
@@ -1449,12 +1463,23 @@ class TurbidityCurrent2D(Component):
         # remove abnormal values
         self._remove_abnormal_values()
 
+        # NOTE: Very small negative values of h can be removed as follows.
+        # adjust_negative_values(
+        #     self.h_temp,
+        #     self.grid.nodes.flatten(),
+        #     self.node_east,
+        #     self.node_west,
+        #     self.node_north,
+        #     self.node_south,
+        #     out_f=self.h_temp,
+        # )
         # update gradient terms
         self.update_gradients2()
 
         # update values after calculating advection terms
         # map node values to links, and link values to nodes.
         self.update_values()
+
         map_values(
             self,
             h=self.h,
@@ -1478,6 +1503,7 @@ class TurbidityCurrent2D(Component):
             U=self.U,
             U_node=self.U_node,
         )
+
         update_up_down_links_and_nodes(self)
 
     def _nonadvection_phase(self):
@@ -1527,6 +1553,8 @@ class TurbidityCurrent2D(Component):
         # for 4 equation model
         if self.model == "4eq":
             self._calculate_turbulent_kinetic_energy()
+            self._TKE_diffusion()
+            self._update_friction_coefficient(self.U_temp, self.Kh_temp)
 
         # Solve deposition/erosion
         if self.suspension:
@@ -1545,6 +1573,7 @@ class TurbidityCurrent2D(Component):
             self.S[self.active_links] = self.grid.calc_grad_at_link(self.eta_temp)[
                 self.active_links
             ]
+            # self.update_boundary_conditions(bed_thick_i=self.bed_thick_i_temp)
 
         # update gradient terms
         self.update_gradients()
@@ -1872,6 +1901,69 @@ class TurbidityCurrent2D(Component):
             u_node=self.u_node_temp, v_node=self.v_node_temp,
         )
 
+    def _TKE_diffusion(self):
+        """solve diffusion terms of TKE"""
+
+        # copy grid ids and other variables
+        wet_pwet_h_links = self.wet_pwet_horizontal_links
+        wet_pwet_v_links = self.wet_pwet_vertical_links
+        link_east = self.link_east
+        link_west = self.link_west
+        link_north = self.link_north
+        link_south = self.link_south
+
+        dx = self.grid.dx
+        dy = self.grid.dy
+        dt = self.dt_local
+        dx2 = dx * dx
+        dy2 = dy * dy
+
+        # diffusion of TKE
+        self.calc_nu_t(self.u_temp, self.v_temp, self.h_link_temp, out=self.nu_t)
+        self.Kh_temp[wet_pwet_h_links] += (
+            self.nu_t[wet_pwet_h_links]
+            * dt
+            * (
+                (
+                    self.Kh_temp[link_east[wet_pwet_h_links]]
+                    - 2 * self.Kh_temp[wet_pwet_h_links]
+                    + self.Kh_temp[link_west[wet_pwet_h_links]]
+                )
+                + (
+                    self.Kh_temp[link_north[wet_pwet_h_links]]
+                    - 2 * self.Kh_temp[wet_pwet_h_links]
+                    + self.Kh_temp[link_south[wet_pwet_h_links]]
+                )
+            )
+            / dx2
+        )
+        self.Kh_temp[wet_pwet_v_links] += (
+            self.nu_t[wet_pwet_v_links]
+            * dt
+            * (
+                (
+                    self.Kh_temp[link_east[wet_pwet_v_links]]
+                    - 2 * self.Kh_temp[wet_pwet_v_links]
+                    + self.Kh_temp[link_west[wet_pwet_v_links]]
+                )
+                + (
+                    self.Kh_temp[link_north[wet_pwet_v_links]]
+                    - 2 * self.Kh_temp[wet_pwet_v_links]
+                    + self.Kh_temp[link_south[wet_pwet_v_links]]
+                )
+            )
+            / dy2
+        )
+        self.update_boundary_conditions(
+            Kh=self.Kh_temp
+        )
+
+        # map values
+        map_links_to_nodes(
+            self,
+            Kh=self.Kh_temp,
+        )
+        
     def _CCUP(self):
         """solve the pressure term by CCUP method
         """
@@ -2075,6 +2167,8 @@ class TurbidityCurrent2D(Component):
         )
 
         # remove negative values
+        self.Kh_temp[self.partial_wet_horizontal_links] = 0.0
+        self.Kh_temp[self.partial_wet_vertical_links] = 0.0
         self.Kh_temp[self.wet_pwet_links[self.Kh_temp[self.wet_pwet_links] < 0.0]] = 0.0
 
         # adjust_negative_values(self.Kh,
@@ -2085,16 +2179,19 @@ class TurbidityCurrent2D(Component):
         #                        self.link_south,
         #                        out_f=self.Kh_temp)
 
+    def _update_friction_coefficient(self, U, Kh):
+        
         # update friction coefficient Cf_link and Cf_nodes
-        U_exist = self.U_temp[self.wet_pwet_links] > 1.0e-10
+        U_exist = U[self.wet_pwet_links] > 1.0e-10
         self.Cf_link[self.wet_pwet_links[U_exist]] = (
-            alpha
-            * (self.Kh_temp[self.wet_pwet_links[U_exist]]/self.h_link_temp[self.wet_pwet_links[U_exist]])
-            / self.U_temp[self.wet_pwet_links[U_exist]]
-            / self.U_temp[self.wet_pwet_links[U_exist]]
-        )
+            self.alpha_4eq
+            * Kh[self.wet_pwet_links[U_exist]]
+            / (self.h_link[self.wet_pwet_links[U_exist]] + 1.0e-7)
+            / U[self.wet_pwet_links[U_exist]]
+            / U[self.wet_pwet_links[U_exist]]
+        ) 
         # self.Cf_link[self.Cf_link > 0.1] = 0.1
-        self.Cf_link[self.wet_pwet_links[~U_exist]] = 0.0
+        self.Cf_link[self.wet_pwet_links[~U_exist]] = self.Cf
         map_values(self, Cf_link=self.Cf_link, Cf_node=self.Cf_node)
 
     def _artificial_viscosity(self, h, h_link, u, v, Ch, Ch_link):
@@ -2296,7 +2393,7 @@ class TurbidityCurrent2D(Component):
         #     self.jameson.run(
         #         self.Kh, self.wet_pwet_horizontal_links, at="hlink", out=self.Kh_temp
         #     )
-
+        
         # update gradient terms
         self.update_gradients()
 
@@ -2572,7 +2669,7 @@ class TurbidityCurrent2D(Component):
             Ch_i[:, nodes]
             + ws * self.bed_active_layer[:, nodes] * self.es[:, nodes] * dt
         )
-        out_Ch_i[:, nodes] /= 1 + ws * r0 / h[nodes] * dt
+        out_Ch_i[:, nodes] /= 1 + ws * r0 / (h[nodes] + 1.0e-7) * dt
         # if np.any(out_Ch_i[:, nodes] > 1.):
         #     pdb.set_trace()  # Trigger debugger
         # # 3-order adams-bashforth method
@@ -2603,9 +2700,9 @@ class TurbidityCurrent2D(Component):
                         ] = self.Ch_i_prev[:, nodes[eroded_region]]
             self.bed_change_i[:, nodes[eroded_region]] = 0.0
 
-                # bedload transport
+        # bedload transport
         if self.bedload_transport == True:
-           self.bedload_total[:, nodes] = get_bedload(
+           self.bedload_total[:, nodes], self.tau_star[:, nodes] = get_bedload(
                u_star,
                self.Ds,
                R=self.R,
@@ -2622,6 +2719,12 @@ class TurbidityCurrent2D(Component):
            self.bed_change_i[:, nodes] += dt / dx / 2.0 * (
                self.bedload_x[:, node_east] - self.bedload_x[:, node_west]
                + self.bedload_y[:, node_north] - self.bedload_y[:, node_south])
+        
+        # update bedload flux at boundary (Neumann boundary condition)
+        self.bedload_x[:, self.grid.nodes_at_right_edge] = self.bedload_x[:, self.node_west[self.grid.nodes_at_right_edge]]
+        self.bedload_x[:, self.grid.nodes_at_left_edge] = self.bedload_x[:, self.node_east[self.grid.nodes_at_left_edge]]
+        self.bedload_y[:, self.grid.nodes_at_top_edge] = self.bedload_y[:, self.node_south[self.grid.nodes_at_top_edge]]
+        self.bedload_y[:, self.grid.nodes_at_bottom_edge] = self.bedload_y[:, self.node_north[self.grid.nodes_at_bottom_edge]]
 
         # Apply diffusion to avoid slope steeper than angle of repose
         self._bed_diffusion_at_high_slope()
@@ -2708,7 +2811,6 @@ class TurbidityCurrent2D(Component):
         #     self.bed_change_i[:, nodes[eroded_region]] = 0.0
 
 
-
         self.bed_active_layer[:, nodes] += 1 / \
             self.la * self.bed_change_i[:, nodes]
         self.bed_active_layer[:, nodes] /= 1 + 1 / self.la * np.sum(
@@ -2719,6 +2821,9 @@ class TurbidityCurrent2D(Component):
         # (self.bed_active_layer[:, nodes])[
         #     self.bed_active_layer[:, nodes] < 0.0
         # ] = 1.0e-10
+        self.bed_active_layer[:, nodes] = np.where(self.bed_active_layer[:, nodes] < 0.0, 
+                                                   1.0e-10, 
+                                                   self.bed_active_layer[:, nodes])
         self.bed_active_layer[:, nodes] /= np.sum(
             self.bed_active_layer[:, nodes], axis=0
         )
@@ -2861,7 +2966,10 @@ class TurbidityCurrent2D(Component):
                                 str(i)] = self.flow_power[i, :]
         for i in range(self.number_gclass):
             self.grid.at_node["sediment_entrainment_rate_" +
-                                str(i)] = self.es[i, :]   
+                                str(i)] = self.es[i, :]
+        for i in range(self.number_gclass):
+            self.grid.at_node["Shields_number_" +
+                                str(i)] = self.tau_star[i, :]
         if self.model == "4eq":
             self.grid.at_link["flow__TKE"] = self.Kh
             self.grid.at_link["flow_TKE__horizontal_gradient"] = self.dKhdx
@@ -3078,6 +3186,13 @@ class TurbidityCurrent2D(Component):
             ]
         )
 
+        variable_names.extend(
+            [
+                "Shields_number_{}".format(i)
+                for i in range(self.number_gclass)
+            ]
+        )
+
         write_netcdf(filename, self.grid, names=variable_names, at="node")
         # pdb.set_trace()
         # nc_data = netCDF4.Dataset(filename, 'a')
@@ -3105,7 +3220,7 @@ class TurbidityCurrent2D(Component):
         v_node=None,
         eta=None,
         p=None,
-        Kh=None,
+        Kh=None
     ):
         """Update boundary conditions
         """
@@ -3204,10 +3319,11 @@ class TurbidityCurrent2D(Component):
                 self.eta_init[self.fixed_value_nodes]
                 - self.eta_init[self.fixed_value_anchor_nodes]
             )
-
+        
         # if bed_thick_i is not None:
         #     for i in range(bed_thick_i.shape[0]):
-        #         bed_thick_i[i, :][self.fixed_grad_nodes] = bed_thick_i[i, :][self.fixed_grad_anchor_nodes]
+                # pdb.set_trace()
+                # bed_thick_i[i, :][self.fixed_grad_nodes] = bed_thick_i[i, :][self.fixed_grad_anchor_nodes]
 
         # if bed_thick_i is not None:
         #     if self.salt is True:
