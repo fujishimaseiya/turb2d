@@ -11,6 +11,30 @@ from .gridutils import map_mean_of_link_nodes_to_link
 from ._links import vertical_link_ids, horizontal_link_ids
 import time
 import sys
+from numba import jit
+
+@jit(nopython=True, cache=True)
+def temporal_interp_numba(node_values, link_values, time_interp):
+    """Numba最適化された時間補間関数"""
+    if time_interp.size <= 2:
+        return node_values, link_values
+    
+    t0, t1 = time_interp[0], time_interp[-1]
+    dt = t1 - t0
+    if dt == 0:
+        return node_values, link_values
+    
+    # 効率的な線形補間
+    for i in range(1, time_interp.size - 1):
+        alpha = (time_interp[i] - t0) / dt
+        for j in range(node_values.shape[1]):
+            node_values[i, j] = node_values[0, j] + alpha * (node_values[-1, j] - node_values[0, j])
+        
+        if link_values is not None:
+            for j in range(link_values.shape[1]):
+                link_values[i, j] = link_values[0, j] + alpha * (link_values[-1, j] - link_values[0, j])
+    
+    return node_values, link_values
 
 class OneWayNesting():
     """Class for one-way nesting."""
@@ -43,7 +67,10 @@ class OneWayNesting():
         self.dt = dt
         self.num_relaxation_grid = num_relaxation_grid
 
-        xmin, xmax, ymin, ymax = self.nested_region
+        xmin = self.tc_child.grid.x_of_node.min()
+        xmax = self.tc_child.grid.x_of_node.max()
+        ymin = self.tc_child.grid.y_of_node.min()
+        ymax = self.tc_child.grid.y_of_node.max()
         # The extraction of regions by self.nested_region does not work well due to floating point precision.
         # Therefore, the coordinates of the parent grid are rounded to a specified number of decimal places.
         parent_node_x = self.round_values(self.tc_parent.grid.node_x, decimals=5)
@@ -110,37 +137,41 @@ class OneWayNesting():
         return z_new
     
     def temporal_interp(self, node_values, link_values, time_interp):
-        """Interpolate the node and link values linearly over time steps.
+        """This is a wrapper function for the numba-optimized temporal interpolation."""
+        return temporal_interp_numba(node_values, link_values, time_interp)
+    # @jit(nopython=True, cache=True)
+    # def temporal_interp(self, node_values, link_values, time_interp):
+    #     """Interpolate the node and link values linearly over time steps.
 
-        Parameters
-        ----------
-        node_values : ndarray
-            Array of node values at different time steps. Shape should be (time_steps, number_of_nodes).
-        link_values : ndarray, optional
-            Array of link values at different time steps. Shape should be (time_steps, number_of_links). Default is None.
-        time_interp : ndarray
-            Array of time steps for interpolation. Should be of shape (time_steps,).
+    #     Parameters
+    #     ----------
+    #     node_values : ndarray
+    #         Array of node values at different time steps. Shape should be (time_steps, number_of_nodes).
+    #     link_values : ndarray, optional
+    #         Array of link values at different time steps. Shape should be (time_steps, number_of_links). Default is None.
+    #     time_interp : ndarray
+    #         Array of time steps for interpolation. Should be of shape (time_steps,).
 
-        Returns
-        -------
-        node_values : ndarray
-            Interpolated node values at the specified time steps.
-        link_values : ndarray, optional
-            Interpolated link values at the specified time steps. Will be None if link_values is None.
-        """
+    #     Returns
+    #     -------
+    #     node_values : ndarray
+    #         Interpolated node values at the specified time steps.
+    #     link_values : ndarray, optional
+    #         Interpolated link values at the specified time steps. Will be None if link_values is None.
+    #     """
 
-        t0, t1 = time_interp[0], time_interp[-1]
-        t = time_interp[1:-1]
-        alpha = (t - t0) / (t1 - t0)
+    #     t0, t1 = time_interp[0], time_interp[-1]
+    #     t = time_interp[1:-1]
+    #     alpha = (t - t0) / (t1 - t0)
 
-        node_start, node_end = node_values[0, :], node_values[-1, :]
-        node_values[1:-1, :] = (1 - alpha[:, None]) * node_start + alpha[:, None] * node_end
+    #     node_start, node_end = node_values[0, :], node_values[-1, :]
+    #     node_values[1:-1, :] = node_start + alpha[:, None] * (node_end - node_start)
 
-        if link_values is not None:
-            link_start, link_end = link_values[0, :], link_values[-1, :]
-            link_values[1:-1, :] = (1 - alpha[:, None]) * link_start + alpha[:, None] * link_end
+    #     if link_values is not None:
+    #         link_start, link_end = link_values[0, :], link_values[-1, :]
+    #         link_values[1:-1, :] = link_start + alpha[:, None] * (link_end - link_start)
 
-        return node_values, link_values
+    #     return node_values, link_values
     
 
     def round_values(self, x, decimals=0):
@@ -273,11 +304,11 @@ class OneWayNesting():
                                                                                       nested_idx=self.nested_region_idx[0],
                                                                                       spatial_interp_method='linear')
 
-        self.tc_child.bed_thick_node_child_grid_condition[:, :] = self.interpolate_parent_to_child_grid(time_interp=self.tc_child.time_interp,
-                                                                                              variable_start=self.tc_parent.bed_thick_ini,
-                                                                                              variable_end=self.tc_parent.bed_thick,     
-                                                                                              nested_idx=self.nested_region_idx[0],
-                                                                                              spatial_interp_method='linear')
+        # self.tc_child.bed_thick_node_child_grid_condition[:, :] = self.interpolate_parent_to_child_grid(time_interp=self.tc_child.time_interp,
+        #                                                                                       variable_start=self.tc_parent.bed_thick_ini,
+        #                                                                                       variable_end=self.tc_parent.bed_thick,     
+        #                                                                                       nested_idx=self.nested_region_idx[0],
+        #                                                                                       spatial_interp_method='linear')
 
         for i in range(gsize):
             self.tc_child.C_i_node_child_grid_condition[:, i, :] = self.interpolate_parent_to_child_grid(time_interp=self.tc_child.time_interp,
@@ -291,6 +322,7 @@ class OneWayNesting():
                                                                                                        variable_end=self.tc_parent.bed_thick_i[i, :],     
                                                                                                        nested_idx=self.nested_region_idx[0],
                                                                                                        spatial_interp_method='linear')
+        # self.tc_child.bed_thick_node_child_grid_condition[:, :] = np.sum(self.tc_child.bed_thick_i_node_child_grid_condition, axis=1)
 
         if self.tc_child.model == '4eq' and self.tc_parent.model == '4eq':
             self.tc_child.Kh_node_child_grid_condition[:, :] = self.interpolate_parent_to_child_grid(time_interp=self.tc_child.time_interp,
@@ -416,6 +448,24 @@ class OneWayNesting():
                               + relax_param_EW*values_east + (1 - relax_param_EW)*values[(start_y_idx):end_y_idx, (start_x_idx):end_x_idx] 
                               + relax_param_WE*values_west + (1 - relax_param_WE)*values[(start_y_idx):end_y_idx, (start_x_idx):end_x_idx]
                               ) / 4
+
+        # values_in_frs_zone_shape = (end_y_idx - start_y_idx, end_x_idx - start_x_idx)
+        # values_in_frs_zone = np.zeros(values_in_frs_zone_shape)
+
+        # for i in range(values_in_frs_zone_shape[0]):
+        #     for j in range(values_in_frs_zone_shape[1]):
+        #         y_idx = start_y_idx + i
+        #         x_idx = start_x_idx + j
+        #         term1 = relax_param_NS[i, j] * values_north[j] + (1 - relax_param_NS[i, j]) * values[y_idx, x_idx]
+        #         term2 = relax_param_SN[i, j] * values_south[j] + (1 - relax_param_SN[i, j]) * values[y_idx, x_idx]
+        #         term3 = relax_param_EW[i, j] * values_east[i] + (1 - relax_param_EW[i, j]) * values[y_idx, x_idx]
+        #         term4 = relax_param_WE[i, j] * values_west[i] + (1 - relax_param_WE[i, j]) * values[y_idx, x_idx]
+        #         values_in_frs_zone[i, j] = (
+        #                                     relax_param_NS[i, j] * values_north[j] + (1 - relax_param_NS[i, j]) * values[start_y_idx + i, start_x_idx + j] +
+        #                                     relax_param_SN[i, j] * values_south[j] + (1 - relax_param_SN[i, j]) * values[start_y_idx + i, start_x_idx + j] +
+        #                                     relax_param_EW[i, j] * values_east[i] + (1 - relax_param_EW[i, j]) * values[start_y_idx + i, start_x_idx + j] +
+        #                                     relax_param_WE[i, j] * values_west[i] + (1 - relax_param_WE[i, j]) * values[start_y_idx + i, start_x_idx + j]
+        #                                    ) / 4
 
         return values_in_frs_zone
 
@@ -732,14 +782,19 @@ class OneWayNesting():
         Z = values_in_frs_zone.copy()
 
         # mask cornars of the relaxation zone
-        mask = (
-            (1 <= X) & (X <= self.num_relaxation_grid) & (1 <= Y) & (Y <= self.num_relaxation_grid) # region 1
-            & (end_internal_region_x + 1 < X) & (X < self.tc_child.grid.shape[1]) & (1 <= Y) & (Y <= self.num_relaxation_grid) # region 3
-            & (1 <= X) & (X <= self.num_relaxation_grid) & ((self.tc_child.grid.shape[0] - self.num_relaxation_grid) <= Y) & (Y < self.tc_child.grid.shape[0]) # region 6
-            & (end_internal_region_x + 1 <= X) & (X < self.tc_child.grid.shape[1]) & ((self.tc_child.grid.shape[0] - self.num_relaxation_grid) <= Y) & (Y < self.tc_child.grid.shape[0]) # region 8
-        )
+        region1 = (1 <= X) & (X < self.num_relaxation_grid) & (1 <= Y) & (Y < self.num_relaxation_grid)
+        region3 = (end_internal_region_x < X) & (X < self.tc_child.grid.shape[1]-1) & (1 <= Y) & (Y < self.num_relaxation_grid)
+        region6 = (1 <= X) & (X < self.num_relaxation_grid) & ((self.tc_child.grid.shape[0]-1 - self.num_relaxation_grid) < Y) & (Y < self.tc_child.grid.shape[0]-1)
+        region8 = (end_internal_region_x < X) & (X < self.tc_child.grid.shape[1]-1) & ((self.tc_child.grid.shape[0]-1 - self.num_relaxation_grid) < Y) & (Y < self.tc_child.grid.shape[0]-1)
+        mask = region1 | region3 | region6 | region8
+        # mask = (
+        #     (1 <= X) & (X <= self.num_relaxation_grid) & (1 <= Y) & (Y <= self.num_relaxation_grid) # region 1
+        #     & (end_internal_region_x + 1 < X) & (X < self.tc_child.grid.shape[1]) & (1 <= Y) & (Y <= self.num_relaxation_grid) # region 3
+        #     & (1 <= X) & (X <= self.num_relaxation_grid) & ((self.tc_child.grid.shape[0] - self.num_relaxation_grid) <= Y) & (Y < self.tc_child.grid.shape[0]) # region 6
+        #     & (end_internal_region_x + 1 <= X) & (X < self.tc_child.grid.shape[1]) & ((self.tc_child.grid.shape[0] - self.num_relaxation_grid) <= Y) & (Y < self.tc_child.grid.shape[0]) # region 8
+        # )
         Z[mask] = np.nan  # Set corners to NaN for interpolation
-
+        # pdb.set_trace()
         known_mask = ~np.isnan(Z)
         x_known = X[known_mask]
         y_known = Y[known_mask]
@@ -748,7 +803,8 @@ class OneWayNesting():
 
         Z_filled = griddata(points=np.column_stack([x_known, y_known]),
                             values=z_known,
-                            xi=points_all,method='linear'
+                            xi=points_all,
+                            method='linear'
                             ).reshape(values_in_frs_zone.shape[0], values_in_frs_zone.shape[1])
         frs_interpolated = Z_filled
 
@@ -782,18 +838,21 @@ class OneWayNesting():
         for i in range(1, num_grid_NS+1):
             # self.relax_param_NS_external_external[i-1, :] = ((num_grid_NS - i + 1)/num_grid_NS)**2
             self.relax_param_NS_external_external[i-1, :] = 1 - np.tanh((i-1)/2)
+        for j in range(1, num_grid_EW+1):
+            # self.relax_param_EW_external_external[:, j-1] = ((num_grid_EW - j + 1)/num_grid_EW)**2
+            self.relax_param_EW_external_external[:, j-1] = 1 - np.tanh((j-1)/2)
         self.relax_param_SN_external_external[:, :] = np.flipud(self.relax_param_NS_external_external)
-        self.relax_param_EW_external_external[:, :] = self.relax_param_NS_external_external[:, :].T
         self.relax_param_WE_external_external[:, :] = np.fliplr(self.relax_param_EW_external_external)
 
         # calculate the relaxation parameter for grid nodes between the external boundary and the interior of the child grid
         for i in range(1, self.num_relaxation_grid+1):
             # self.relax_param_NS_external_internal[i-1, :] = ((self.num_relaxation_grid - i + 1)/self.num_relaxation_grid)**2
             self.relax_param_NS_external_internal[i-1, :] = 1 - np.tanh((i-1)/2)
+        for j in range(1, self.num_relaxation_grid+1):
+            # self.relax_param_EW_external_internal[:, j-1] = ((self.num_relaxation_grid - j + 1)/self.num_relaxation_grid)**2
+            self.relax_param_WE_external_internal[:, j-1] = 1 - np.tanh((j-1)/2)
         self.relax_param_SN_external_internal[:, :] = np.flipud(self.relax_param_NS_external_internal)
-        self.relax_param_WE_external_internal[:, :] = self.relax_param_NS_external_internal[:, :].T
         self.relax_param_EW_external_internal[:, :] = np.fliplr(self.relax_param_WE_external_internal)
-
 
 class TwoWayNesting(OneWayNesting):
     """Class for two-way nesting."""
