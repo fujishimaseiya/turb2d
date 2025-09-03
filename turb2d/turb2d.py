@@ -1464,15 +1464,15 @@ class TurbidityCurrent2D(Component):
         self._remove_abnormal_values()
 
         # NOTE: Very small negative values of h can be removed as follows.
-        # adjust_negative_values(
-        #     self.h_temp,
-        #     self.grid.nodes.flatten(),
-        #     self.node_east,
-        #     self.node_west,
-        #     self.node_north,
-        #     self.node_south,
-        #     out_f=self.h_temp,
-        # )
+        adjust_negative_values(
+            self.h_temp,
+            self.grid.nodes.flatten(),
+            self.node_east,
+            self.node_west,
+            self.node_north,
+            self.node_south,
+            out_f=self.h_temp,
+        )
         # update gradient terms
         self.update_gradients2()
 
