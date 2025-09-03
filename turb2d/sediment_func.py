@@ -262,20 +262,22 @@ def _leeuw_2020(u_star, U, Ch, g, R, h, Ds, nu, salt, S, out=None):
     """This is a method for calculation of sediment entrainment rate based on Leeuw (2020).
    Two parameter model is employed."""
     if salt is True:
-        C_i = Ch[:4, :]/h
+        C_i = Ch[:-1, :]/h
     elif salt is False:
         C_i = Ch/h 
     C_T = np.sum(C_i, axis=0)
     Fr = U/np.sqrt(R*g*C_T*h)
+    # Fr = U/np.sqrt(g*h)
     ws = get_ws(R, g, Ds, nu)
-    # Z = (u_star/ws)**0.945 * Fr - 0.05
-    # Z[Z < 0.0] = 0.0
-    ks = 2*np.mean(Ds[:4, :])
-    h_sk = U**(3/2) * ks**(1/4) / (8.1**(2/3) * (R*C_T*g*S)**(3/4))
-    u_star_skin = np.sqrt(R*C_T*g*h_sk*S)
+    Z = (u_star/ws)**0.945 * Fr - 0.05
+    Z[Z < 0.0] = 0.0
+    # ks = 2*np.mean(Ds[:4, :])
+    # h_sk = U**(3/2) * ks**(1/4) / (8.1**(2/3) * (R*C_T*g*S)**(3/4))
+    # u_star_skin = np.sqrt(R*C_T*g*h_sk*S)
     # out[:, :] = 7.04 * 10**-4 * (u_star/ws)**1.71 * Fr**1.81
-    # out[:, :] = 7.04 * 10**-4 * (Z**1.81) / (1 + 3 * (7.04 * 10**-4 * Z**1.81))
-    out[:, :] = (4.74 * 10**-4) * ((u_star_skin/ws)**1.77) * Fr**1.18
+    out[:, :] = 7.04 * 10**-4 * (Z**1.81) / (1 + 3 * (7.04 * 10**-4 * Z**1.81))
+    # out[:, :] = (4.74 * 10**-4) * ((u_star_skin/ws)**1.77) * Fr**1.18
+    # out[:, :] =  (4.74 * 10**-4) * (Fr*(u_star_skin/ws)**1.5 - 0.015)**1.18 / 1 + 3* ((4.74 * 10**-4) * (Fr*(u_star_skin/ws)**1.5 - 0.015)**1.18)
     P_f = u_star**2*(np.abs(U))
     N_f = g*R*h*ws
     flow_power = P_f/N_f
@@ -321,13 +323,13 @@ def get_bedload(u_star, Ds, R=1.65, g=9.81, function="MPM", out=None):
         out = np.zeros([len(Ds), len(u_star)])
 
     if function == "MPM":
-        _MPM(u_star, Ds, R, g, a=8.0, b=1.5, out=out)
+        out, tau_star = _MPM(u_star, Ds, R, g, a=8.0, b=1.5, out=out)
     elif function == "WP2006":
-        _MPM(u_star, Ds, R, g, a=4.93, b=1.6, out=out)
+        out, tau_star = _MPM(u_star, Ds, R, g, a=4.93, b=1.6, out=out)
     else:
-        _MPM(u_star, Ds, R, g, a=8.0, b=1.5, out=out)
+        out, tau_star = _MPM(u_star, Ds, R, g, a=8.0, b=1.5, out=out)
 
-    return out
+    return out, tau_star
 
 def _MPM(u_star, Ds, R=1.65, g=9.81, a=8.0, b=1.5, out=None):
     """Bedload prediction by Meyer=Peter and
@@ -368,8 +370,11 @@ def _MPM(u_star, Ds, R=1.65, g=9.81, a=8.0, b=1.5, out=None):
 
     if out is None:
         out = np.zeros([len(Ds), u_star.shape])
+    tau_star = np.zeros([len(Ds), len(u_star)])
 
     tau_c = 0.047
+
+    tau_star[:, :] = u_star * u_star / (R * g * Ds)
 
     tau_star_c = u_star * u_star / (R * g * Ds) - tau_c
 
@@ -381,4 +386,4 @@ def _MPM(u_star, Ds, R=1.65, g=9.81, a=8.0, b=1.5, out=None):
 
     out[:, :] = a * tau_star_c ** b * np.sqrt(R * g * Ds ** 3)
 
-    return out
+    return out, tau_star
