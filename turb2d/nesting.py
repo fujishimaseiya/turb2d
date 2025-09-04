@@ -39,7 +39,7 @@ def temporal_interp_numba(node_values, link_values, time_interp):
 class OneWayNesting():
     """Class for one-way nesting."""
 
-    def __init__(self, tc_parent, tc_child, nested_region, parent_grid_file=None, child_grid_file=None, dt=1.0, num_relaxation_grid=1):
+    def __init__(self, tc_parent, tc_child, dt=1.0, num_relaxation_grid=1):
         """Initialize the OneWayNesting class.
 
         Parameters
@@ -61,9 +61,6 @@ class OneWayNesting():
         """
         self.tc_parent = tc_parent
         self.tc_child = tc_child
-        self.nested_region = nested_region
-        self.parent_grid_file = parent_grid_file
-        self.child_grid_file = child_grid_file
         self.dt = dt
         self.num_relaxation_grid = num_relaxation_grid
 
@@ -87,8 +84,6 @@ class OneWayNesting():
                                     (parent_node_y > ymin) & 
                                     (parent_node_y < ymax)
                                     )
-        ### This is the debugging code to check the nested region indices ###
-        # self.tc_parent.nested_region_idx = self.nested_region_idx
         
     def interp_griddata(self, x, y, parent_values, x_new, y_new, interp_method='linear'):
         """
