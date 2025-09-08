@@ -1781,7 +1781,7 @@ class TurbidityCurrent2D(Component):
         # calculate flow expansion by water entrainment
         if self.water_entrainment is True:
             if self.water_detrainment is True:
-                de_w = get_det_rate(self.ws, self.Ch_i [:, self.wet_nodes], self.h[self.wet_nodes], det_coef=self.detrainment_coef)
+                de_w = get_det_rate(self.ws, self.Ch_i[:, self.wet_nodes], self.h[self.wet_nodes], det_coef=self.detrainment_coef)
             else:
                 de_w = 0.0
 
@@ -2146,9 +2146,14 @@ class TurbidityCurrent2D(Component):
         #     * self.ew_link[self.wet_pwet_links]
         #     * self.U_temp[self.wet_pwet_links] ** 3
         #     - beta * K ** 1.5
+        if self.water_detrainment is True:
+            de_w = get_det_rate(self.ws, self.Ch_link_i[:, self.wet_pwet_links], self.h_link[self.wet_pwet_links], det_coef=self.detrainment_coef)
+        else:
+            de_w = 0.0
+            
         # first-order euler method
         self.Kh_temp[self.wet_pwet_links] += self.dt_local * (
-            (self.Cf_link[self.wet_pwet_links] + 0.5 * self.ew_link[self.wet_pwet_links])
+            (self.Cf_link[self.wet_pwet_links] + 0.5 * (self.ew_link[self.wet_pwet_links] - de_w))
             * self.U_temp[self.wet_pwet_links]
             * self.U_temp[self.wet_pwet_links]
             * self.U_temp[self.wet_pwet_links]
@@ -2161,7 +2166,7 @@ class TurbidityCurrent2D(Component):
                     self.Ch_link_i_temp[:, self.wet_pwet_links] * self.ws, axis=0)
                 + 0.5
                 * self.U_temp[self.wet_pwet_links]
-                * self.ew_link[self.wet_pwet_links]
+                * (self.ew_link[self.wet_pwet_links] - de_w)
                 * self.Ch_link_temp[self.wet_pwet_links]
             )
         )
