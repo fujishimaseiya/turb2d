@@ -85,6 +85,7 @@ def create_topography(
     if os.path.exists(config_file):
         with open(config_file) as yml:
             config = yaml.safe_load(yml)
+        grid_file = config['grid_param']['grid_file']
         length=config['grid_param']['flume_length']
         width=config['grid_param']['flume_width']
         spacing=config['grid_param']['spacing']
@@ -97,71 +98,181 @@ def create_topography(
         canyon_half_width=config['grid_param']['canyon_half_width']
         canyon=config['grid_param']['canyon']
         noise=config['grid_param']['noise']
-    # making grid
-    # size of calculation domain is 4 x 8 km with dx = 20 m
-    length = Decimal(str(length))
-    width = Decimal(str(width))
-    spacing = Decimal(str(spacing))
-    lgrids = length / spacing
-    wgrids = width / spacing
-    grid = RasterModelGrid((lgrids+1, wgrids+1), xy_spacing=[spacing, spacing])
-    grid.add_zeros("flow__depth", at="node")
-    grid.add_zeros("topographic__elevation", at="node")
-    grid.add_zeros("flow__horizontal_velocity_at_node", at="node")
-    grid.add_zeros("flow__vertical_velocity_at_node", at="node")
-    grid.add_zeros("flow__horizontal_velocity", at="link")
-    grid.add_zeros("flow__vertical_velocity", at="link")
-    grid.add_zeros("bed__thickness", at="node")
 
-    # making topography
-    # set the slope
-    grid.at_node["topographic__elevation"] = (
-        grid.node_y - slope_basin_break
-    ) * slope_outside
+    if grid_file is None:
+        # making grid
+        # size of calculation domain is 4 x 8 km with dx = 20 m
+        length = Decimal(str(length))
+        width = Decimal(str(width))
+        spacing = Decimal(str(spacing))
+        lgrids = length / spacing
+        wgrids = width / spacing
+        grid = RasterModelGrid((lgrids+1, wgrids+1), xy_spacing=[spacing, spacing])
+        grid.add_zeros("flow__depth", at="node")
+        grid.add_zeros("topographic__elevation", at="node")
+        grid.add_zeros("flow__horizontal_velocity_at_node", at="node")
+        grid.add_zeros("flow__vertical_velocity_at_node", at="node")
+        grid.add_zeros("flow__horizontal_velocity", at="link")
+        grid.add_zeros("flow__vertical_velocity", at="link")
+        grid.add_zeros("bed__thickness", at="node")
 
-    if canyon == "parabola":
-        # set canyon
-        d0 = slope_inside * (canyon_basin_break - slope_basin_break)
-        d = slope_inside * (grid.node_y - canyon_basin_break) - d0
-        a = d0 / canyon_half_width ** 2
-        canyon_elev = a * (grid.node_x - canyon_center) ** 2 + d
-        inside = np.where(canyon_elev < grid.at_node["topographic__elevation"])
-        grid.at_node["topographic__elevation"][inside] = canyon_elev[inside]
+        # making topography
+        # set the slope
+        grid.at_node["topographic__elevation"] = (
+            grid.node_y - slope_basin_break
+        ) * slope_outside
 
-    elif canyon == "rectangular":
-        # Set canyon (rectangular shape with constant width)
-        d0 = slope_inside * (canyon_basin_break - slope_basin_break)
-        d = slope_inside * (grid.node_y - canyon_basin_break) - d0
+        if canyon == "parabola":
+            # set canyon
+            d0 = slope_inside * (canyon_basin_break - slope_basin_break)
+            d = slope_inside * (grid.node_y - canyon_basin_break) - d0
+            a = d0 / canyon_half_width ** 2
+            canyon_elev = a * (grid.node_x - canyon_center) ** 2 + d
+            inside = np.where(canyon_elev < grid.at_node["topographic__elevation"])
+            grid.at_node["topographic__elevation"][inside] = canyon_elev[inside]
 
-        # Define canyon lateral limits
-        x_min = canyon_center - canyon_half_width
-        x_max = canyon_center + canyon_half_width
+        elif canyon == "rectangular":
+            # Set canyon (rectangular shape with constant width)
+            d0 = slope_inside * (canyon_basin_break - slope_basin_break)
+            d = slope_inside * (grid.node_y - canyon_basin_break) - d0
 
-        # Logical mask for canyon area
-        canyon_mask = (grid.node_x >= x_min) & (grid.node_x <= x_max)
-        # Elevation inside canyon region
-        canyon_elev = d
+            # Define canyon lateral limits
+            x_min = canyon_center - canyon_half_width
+            x_max = canyon_center + canyon_half_width
 
-        # Apply canyon elevation where it is lower than current surface
-        current_elev = grid.at_node["topographic__elevation"]
-        new_elev = np.where(canyon_mask, canyon_elev, current_elev)
-        grid.at_node["topographic__elevation"] = np.minimum(current_elev, new_elev)
+            # Logical mask for canyon area
+            canyon_mask = (grid.node_x >= x_min) & (grid.node_x <= x_max)
+            # Elevation inside canyon region
+            canyon_elev = d
 
-    # set basin
-    basin_height = (grid.node_y - slope_basin_break) * slope_basin
-    basin_region = grid.at_node["topographic__elevation"] < basin_height
-    grid.at_node["topographic__elevation"][basin_region] = basin_height[basin_region]
+            # Apply canyon elevation where it is lower than current surface
+            current_elev = grid.at_node["topographic__elevation"]
+            new_elev = np.where(canyon_mask, canyon_elev, current_elev)
+            grid.at_node["topographic__elevation"] = np.minimum(current_elev, new_elev)
 
-    # add random value on topographic elevation (+- noise)
-    grid.at_node["topographic__elevation"] += (
-        2.0 * noise * (np.random.rand(grid.number_of_nodes) - 0.5)
-    )
+        # set basin
+        basin_height = (grid.node_y - slope_basin_break) * slope_basin
+        basin_region = grid.at_node["topographic__elevation"] < basin_height
+        grid.at_node["topographic__elevation"][basin_region] = basin_height[basin_region]
 
-    grid.set_closed_boundaries_at_grid_edges(False, False, False, False)
+        # add random value on topographic elevation (+- noise)
+        grid.at_node["topographic__elevation"] += (
+            2.0 * noise * (np.random.rand(grid.number_of_nodes) - 0.5)
+        )
+
+        grid.set_closed_boundaries_at_grid_edges(False, False, False, False)
+    
+    elif grid_file is not None:
+        # create grid from npy file
+        grid = create_topography_from_npy(gridfile=grid_file, spacing=spacing, config_file=None)
 
     return grid
+def create_child_topography(
+        parent_grid,
+        config_file=None,
+):
+    """create a child grid for nesting from a parent grid
+    
+    Parameters
+    ---------------------- 
+    parent_grid: RasterModelGrid
+                 a landlab grid object of the parent grid
+    
+    config_file: String, optional
+                 path to a configuration file for the child grid
+    
+    Return
+    ----------------------
+    child_grid: RasterModelGrid
+                a landlab grid object of the child grid
+    nested_region_idx: ndarray
+                indices of the nested region in the parent grid
+    """
 
-def create_nested_grid(config_file=None,
+    with open(config_file) as yml:
+        config = yaml.safe_load(yml)
+        xmin = config['grid_param']['nested_region_xmin']
+        xmax = config['grid_param']['nested_region_xmax']
+        ymin = config['grid_param']['nested_region_ymin']
+        ymax = config['grid_param']['nested_region_ymax']
+        child_grid_spacing = config['grid_param']['spacing']
+    parent_grid_spacing = parent_grid.spacing[0]
+    # Initialize the child grid
+    # If xmin, xmax, ymin and ymax are not multiples of the spacing of parent grid, 
+    # adjust them to the nearest multiple of the parent grid.
+    if ymax % parent_grid_spacing != 0:
+        ymax = round(float(ymax) / float(parent_grid_spacing)) * parent_grid_spacing
+    if ymin % parent_grid_spacing != 0:
+        ymin = round(float(ymin) / float(parent_grid_spacing)) * parent_grid_spacing
+    if xmax % parent_grid_spacing != 0:
+        xmax = round(float(xmax) / float(parent_grid_spacing)) * parent_grid_spacing
+    if xmin % parent_grid_spacing != 0:
+        xmin = round(float(xmin) / float(parent_grid_spacing)) * parent_grid_spacing
+
+    ymax = Decimal(str(ymax))
+    ymin = Decimal(str(ymin))
+    xmax = Decimal(str(xmax))
+    xmin = Decimal(str(xmin))
+    length = (ymax - ymin)
+    width = (xmax - xmin)
+    child_grid_length = Decimal(str(length))
+    child_grid_width = Decimal(str(width))
+    child_grid_spacing = Decimal(str(child_grid_spacing))
+    lgrids = child_grid_length / child_grid_spacing
+    wgrids = child_grid_width / child_grid_spacing
+    child_grid = RasterModelGrid(shape=(lgrids+1, wgrids+1), xy_spacing=[child_grid_spacing, child_grid_spacing], xy_of_lower_left=[xmin, ymin])
+
+    # Initialize fields of the child grid
+    child_grid.add_zeros("flow__depth", at="node")
+    child_grid.add_zeros("topographic__elevation", at="node")
+    child_grid.add_zeros("flow__horizontal_velocity_at_node", at="node")
+    child_grid.add_zeros("flow__vertical_velocity_at_node", at="node")
+    child_grid.add_zeros("flow__horizontal_velocity", at="link")
+    child_grid.add_zeros("flow__vertical_velocity", at="link")
+    child_grid.add_zeros("bed__thickness", at="node")
+
+    # the coordinates of the parent grid are rounded to a specified number of decimal places.
+    s = str(parent_grid_spacing)
+    _, s_d = s.split('.')
+    decimal = len(s_d)
+    parent_x = round_values(parent_grid.node_x, decimals=decimal)
+    parent_y = round_values(parent_grid.node_y, decimals=decimal)
+    # Extract topographic elevation from the parent grid
+    nested_region_idx = np.where(
+                                (parent_x >= float(xmin)) & 
+                                (parent_x <= float(xmax)) & 
+                                (parent_y >= float(ymin)) & 
+                                (parent_y <= float(ymax))
+                                )
+
+    parent_topo = parent_grid.at_node["topographic__elevation"][nested_region_idx]
+    parent_x_nested_region = parent_grid.node_x[nested_region_idx]
+    parent_y_nested_region = parent_grid.node_y[nested_region_idx]
+
+    # Interpolate and assign topographic elevation to the child grid
+    interp = LinearNDInterpolator(list(zip(parent_x_nested_region, parent_y_nested_region)), parent_topo)
+    child_topo = interp(list(zip(child_grid.node_x, child_grid.node_y)))
+    child_grid.at_node["topographic__elevation"] = child_topo
+
+    return child_grid, nested_region_idx
+
+def create_child_grid_from_npy(config_file=None, parent_grid_file=None, parent_spacing=0.01, nested_region=[0.5, 1.5, 0.5, 1.5], child_grid_spacing=0.01):
+    # open configuration file
+    if config_file is not None:
+        with open(config_file) as yml:
+            config = yaml.safe_load(yml)
+        child_grid_spacing = config['grid_param']['child_grid_spacing']
+        xmin = config['grid_param']['nested_region_xmin']
+        xmax = config['grid_param']['nested_region_xmax']
+        ymin = config['grid_param']['nested_region_ymin']
+        ymax = config['grid_param']['nested_region_ymax']
+    else:
+        # Get indices of the region of interest
+        xmin, xmax, ymin, ymax = nested_region
+    
+
+def create_nested_grid(config_parent=None,
+                       config_child=None,
                        length=8000,
                        width=2000,
                        spacing=20,
@@ -182,8 +293,11 @@ def create_nested_grid(config_file=None,
 
     Parameters
     ----------------------
-    config_file: String, optional
-        path to a configuration file
+    config_parent: String, optional
+        path to a configuration file for the parent grid
+    
+    config_child: String, optional
+        path to a configuration file for the child grid
 
     length: float, optional
         length of calculation domain of parent grid [m]
@@ -236,17 +350,17 @@ def create_nested_grid(config_file=None,
     child_grid: RasterModelGrid
         a child grid object
     """
-        # open configuration file
-    if config_file is not None:
-        with open(config_file) as yml:
+    # open configuration file
+    if config_parent is not None:
+        with open(config_parent) as yml:
             config = yaml.safe_load(yml)
-        parent_grid_spacing = config['grid_param']['parent_grid_spacing']    
+        parent_grid_spacing = config['grid_param']['grid_spacing']    
         child_grid_spacing = config['grid_param']['child_grid_spacing']
         xmin = config['grid_param']['nested_region_xmin']
         xmax = config['grid_param']['nested_region_xmax']
         ymin = config['grid_param']['nested_region_ymin']
         ymax = config['grid_param']['nested_region_ymax']
-        parent_grid_file = config['grid_param']['parent_grid_file']
+        parent_grid_file = config['grid_param']['grid_file']
     else:
         # Get indices of the region of interest
         xmin, xmax, ymin, ymax = nested_region
@@ -254,7 +368,7 @@ def create_nested_grid(config_file=None,
     if parent_grid_file is None:
         # create parent grid
         parent_grid = create_topography(
-            config_file=config_file,
+            config_file=config_parent,
             length=length,
             width=width,
             spacing=spacing,
@@ -489,7 +603,6 @@ def create_init_flow_region(
         initial_flow_concentration_i
     )
 
-
 def create_topography_from_geotiff(
     geotiff_filename, xlim=None, ylim=None, spacing=500, filter_size=[1, 1]
 ):
@@ -561,14 +674,14 @@ def create_topography_from_geotiff(
 
     return grid
 
-def create_topography_from_npy(filename, spacing, config_file=None):
+def create_topography_from_npy(gridfile, spacing, config_file=None):
     if config_file is not None:
         with open(config_file) as yml:
             config = yaml.safe_load(yml)
         spacing = config['grid_param']['grid_spacing']
-        filename = config['grid_param']['grid_file']
+        gridfile = config['grid_param']['grid_file']
 
-    ds = np.load(filename)
+    ds = np.load(gridfile)
     topo_data = np.rot90(ds, 1)
     grid = RasterModelGrid(topo_data.shape, xy_spacing=[spacing, spacing])
     grid.add_zeros("flow__depth", at="node")
@@ -728,13 +841,16 @@ def set_inlet_condition(
     # set boundary condition at inlet
     grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
 
-def set_boundary_condition(grid, top_edge_bc, bottom_edge_bc, left_edge_bc, right_edge_bc):
+def set_boundary_condition(grid, config_file, top_edge_bc=None, bottom_edge_bc=None, left_edge_bc=None, right_edge_bc=None):
     """ set boundary condition at the edges of a grid
     
        Parameters
        ----------------------
        grid: RasterModelGrid
           a landlab grid object to be used in TurbidityCurrent2D
+
+       config_file: String
+            path to a configuration file
 
        top_edge_bc: String
           boundary condition at the top edge. 
@@ -752,6 +868,13 @@ def set_boundary_condition(grid, top_edge_bc, bottom_edge_bc, left_edge_bc, righ
           boundary condition at the right edge. 
           Options are 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'
     """
+    if config_file is not None:
+        with open(config_file) as yml:
+            config = yaml.safe_load(yml)
+        top_edge_bc = config['boundary_condition']['top_edge']
+        bottom_edge_bc = config['boundary_condition']['bottom_edge']
+        left_edge_bc = config['boundary_condition']['left_edge']
+        right_edge_bc = config['boundary_condition']['right_edge']
 
     # set boundary condition at top edge
     if top_edge_bc == "fixed_value":

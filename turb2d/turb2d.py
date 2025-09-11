@@ -364,8 +364,8 @@ class TurbidityCurrent2D(Component):
             self.flow_type = config['model_param']['flow_type']
             self.inlet = inlet
             self.inlet_link = inlet_link
-            self.one_way_nesting = config['grid_param']['one_way_nesting']
-            self.two_way_nesting = config['grid_param']['two_way_nesting']
+            self.one_way_nesting = config['model_param']['one_way_nesting']
+            self.two_way_nesting = config['model_param']['two_way_nesting']
             self.parent_grid = parent_grid
             self.child_grid = child_grid
             nesting = (self.one_way_nesting or self.two_way_nesting)

@@ -1,28 +1,17 @@
 grid_param:
-  grid_file: 
-  flume_length: 1.0
-  flume_width: 1.0
-  spacing: 0.05
-  slope_outside: 0.1
-  slope_inside: 0.1
-  slope_basin: 0.1
-  slope_basin_break: 0.1
-  canyon_basin_break: 0.1
-  canyon_center: 0.1
-  canyon_half_width: 0.1
-  canyon: 0.1
-  noise: 0.1
+  spacing: 50.
+  nested_region_xmin: 2000
+  nested_region_xmax: 6000
+  nested_region_ymin: 9000
+  nested_region_ymax: 17000
+  one_way_nesting: True
+  two_way_nesting: False
 
-inlet_condition:
-  inlet_edge:
-  inlet_width: 0.3
-  h_ini: 1.0
-  C_ini: 
-        - 0.0025
-        - 0.0025
-        - 0.0025
-        - 0.0025
-  U_ini: 1.0
+boundary_condition:
+  top_edge: fixed_value
+  bottom_edge: fixed_value
+  left_edge: fixed_value
+  right_edge: fixed_value
 
 model_param:
   h_init: 0.0
@@ -60,5 +49,5 @@ model_param:
   karman: 0.4
   p: 1.0
   flow_type: continuous
-  one_way_nesting: False
+  one_way_nesting: True
   two_way_nesting: False

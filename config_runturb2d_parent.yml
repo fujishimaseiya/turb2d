@@ -1,28 +1,35 @@
 grid_param:
-  grid_file: 
-  flume_length: 1.0
-  flume_width: 1.0
-  spacing: 0.05
-  slope_outside: 0.1
-  slope_inside: 0.1
-  slope_basin: 0.1
-  slope_basin_break: 0.1
-  canyon_basin_break: 0.1
-  canyon_center: 0.1
-  canyon_half_width: 0.1
-  canyon: 0.1
-  noise: 0.1
+  grid_file: basin_l16_w8_dx100m.npy 
+  flume_length: 
+  flume_width:
+  spacing: 100
+  slope_outside: 
+  slope_inside: 
+  slope_basin: 
+  slope_basin_break: 
+  canyon_basin_break: 
+  canyon_center: 
+  canyon_half_width: 
+  canyon: 
+  noise: 
 
 inlet_condition:
   inlet_edge:
-  inlet_width: 0.3
-  h_ini: 1.0
+  inlet_width: 1000.
+  inlet_length: 
+  h_ini: 30.0
   C_ini: 
         - 0.0025
         - 0.0025
         - 0.0025
         - 0.0025
-  U_ini: 1.0
+  U_ini: 5.0
+
+boundary_condition:
+  top_edge: fixed_value
+  bottom_edge: fixed_gradient
+  left_edge: fixed_gradient
+  right_edge: fixed_gradient
 
 model_param:
   h_init: 0.0
@@ -60,5 +67,5 @@ model_param:
   karman: 0.4
   p: 1.0
   flow_type: continuous
-  one_way_nesting: False
+  one_way_nesting: True
   two_way_nesting: False
