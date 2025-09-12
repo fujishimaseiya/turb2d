@@ -24,6 +24,12 @@ inlet_condition:
         - 0.0025
   U_ini: 1.0
 
+boundary_condition:
+  top_edge: fixed_value
+  bottom_edge: fixed_gradient
+  left_edge: fixed_gradient
+  right_edge: fixed_gradient
+
 model_param:
   h_init: 0.0
   Ch_w: 10.0e-10
