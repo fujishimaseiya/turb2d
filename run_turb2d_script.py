@@ -27,10 +27,11 @@ set_inlet_condition(grid=grid, config_file="config_runturb2d.yml", inlet_edge=No
 
 # set boundary condition of parent grid
 set_boundary_condition(grid=grid, 
-                       top_edge_bc='fixed_value',
-                       bottom_edge_bc='fixed_gradient',
-                       left_edge_bc='fixed_gradient', 
-                       right_edge_bc='fixed_gradient')
+                       config_file="config_runturb2d.yml",
+                       top_edge_bc=None,
+                       bottom_edge_bc=None,
+                       left_edge_bc=None, 
+                       right_edge_bc=None)
 
 
 tc = TurbidityCurrent2D(grid, config_path="config_runturb2d.yml")
