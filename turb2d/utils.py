@@ -14,6 +14,7 @@ import yaml
 import rasterio
 from scipy.interpolate import LinearNDInterpolator
 from fractions import Fraction
+from rasterio.warp import calculate_default_transform, reproject, Resampling
 
 def create_topography(
     config_file=None,
@@ -646,6 +647,35 @@ def create_topography_from_geotiff(
         min_x, max_y = transform * (0, 0)
         max_x, min_y = transform * (width, height)
         xy_of_lower_left = (min_x, min_y)
+
+        if src.crs.to_string() == "EPSG:4326":
+            target_crs = "EPSG:3857"  # Web Mercator
+            # calculate the transform and dimensions of the reprojected raster
+            transform, width, height = calculate_default_transform(
+                src.crs, target_crs, src.width, src.height, *src.bounds
+            )
+            kwargs = src.meta.copy()
+            kwargs.update({
+                'crs': target_crs,
+                'transform': transform,
+                'width': width,
+                'height': height
+            })
+            # reproject and resample the raster data
+            topo_data = np.empty((height, width), dtype=src.dtypes[0])
+            reproject(
+                source=rasterio.band(src, 1),
+                destination=topo_data,
+                src_transform=src.transform,
+                src_crs=src.crs,
+                dst_transform=transform,
+                dst_crs=target_crs,
+                resampling=Resampling.bilinear
+            )
+            dx = transform[0]
+            min_x, max_y = transform * (0, 0)
+            max_x, min_y = transform * (width, height)
+            xy_of_lower_left = (min_x, min_y)
 
     # print(topo_data.shape)
     if (xlim is not None) and (ylim is not None):
