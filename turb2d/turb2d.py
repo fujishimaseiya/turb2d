@@ -1092,7 +1092,9 @@ class TurbidityCurrent2D(Component):
         self.copy_values_to_temp()
 
         # if you want to use nested grid, initial value of parent grid is saved to calculate the conditions of the child grid
-        if (self.one_way_nesting is True) and (self.parent_grid is True) and (self.child_grid is False):
+        # NOTE: if we perform use grandchild grid, this code block could be modified to reduce memory usage.
+        # if (self.one_way_nesting is True) and (self.parent_grid is True) and (self.child_grid is False):
+        if self.one_way_nesting is True:
             self.h_ini = self.h.copy()
             self.u_node_ini = self.u_node.copy()
             self.v_node_ini = self.v_node.copy()
@@ -1435,8 +1437,6 @@ class TurbidityCurrent2D(Component):
                 out_dfdx=self.dChdx_i_temp[i, :],
                 out_dfdy=self.dChdy_i_temp[i, :],
             )
-        # if np.any(self.Ch_i_temp > 1.):
-        #     pdb.set_trace()
 
         if self.model == "4eq":
             self.cip2d.run(
@@ -1463,16 +1463,9 @@ class TurbidityCurrent2D(Component):
         # remove abnormal values
         self._remove_abnormal_values()
 
-        # NOTE: Very small negative values of h can be removed as follows.
-        adjust_negative_values(
-            self.h_temp,
-            self.grid.nodes.flatten(),
-            self.node_east,
-            self.node_west,
-            self.node_north,
-            self.node_south,
-            out_f=self.h_temp,
-        )
+        # Remove negative values of Kh
+        self.Kh_temp[self.Kh_temp < 0] = 0.0
+        
         # update gradient terms
         self.update_gradients2()
 
@@ -2309,16 +2302,16 @@ class TurbidityCurrent2D(Component):
                 out_f=self.Ch_i_temp[i, :],
             )
 
-        if self.model == "4eq":
-            adjust_negative_values(
-                self.Kh_temp,
-                self.wet_pwet_nodes,
-                self.node_east,
-                self.node_west,
-                self.node_north,
-                self.node_south,
-                out_f=self.Kh_temp,
-            )
+        # if self.model == "4eq":
+        #     adjust_negative_values(
+        #         self.Kh_temp,
+        #         self.wet_pwet_links,
+        #         self.node_east,
+        #         self.node_west,
+        #         self.node_north,
+        #         self.node_south,
+        #         out_f=self.Kh_temp,
+        #     )
 
     def _process_wet_dry_boundary(self):
         """Calculate processes at wet and dry boundary
