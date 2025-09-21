@@ -2178,7 +2178,6 @@ class TurbidityCurrent2D(Component):
         #                        out_f=self.Kh_temp)
 
     def _update_friction_coefficient(self, U, Kh):
-        
         # update friction coefficient Cf_link and Cf_nodes
         U_exist = U[self.wet_pwet_links] > 1.0e-10
         self.Cf_link[self.wet_pwet_links[U_exist]] = (
@@ -2188,7 +2187,7 @@ class TurbidityCurrent2D(Component):
             / U[self.wet_pwet_links[U_exist]]
             / U[self.wet_pwet_links[U_exist]]
         ) 
-        # self.Cf_link[self.Cf_link > 0.1] = 0.1
+        self.Cf_link[self.Cf_link > 0.1] = 0.1
         self.Cf_link[self.wet_pwet_links[~U_exist]] = self.Cf
         map_values(self, Cf_link=self.Cf_link, Cf_node=self.Cf_node)
 
@@ -2707,6 +2706,7 @@ class TurbidityCurrent2D(Component):
                g=self.g,
                function="MPM"
            )
+
            self.bedload_total[:, nodes] *= self.bed_active_layer[:, nodes]
            self.bedload_x[:, nodes] = (
                u_node[nodes] / (U_node[nodes] + 1.0e-7) * self.bedload_total[:, nodes]
