@@ -1,86 +1,95 @@
 multi_param:
   dirpath: .
   filename: run_3000.nc
-  num_runs: 10
+  num_runs: 3000
   processors: 10
   C_total_min: #0.0001
   C_total_max: #0.005
   Cmin: 0.00001
   Cmax: 0.005
-  Umin: 0.01
-  Umax: 0.3
-  hmin: 0.01
-  hmax: 0.3
+  Umin: 0.1
+  Umax: 10.0
+  hmin: 0.1
+  hmax: 10.0
   rmin: # None
   rmax: # None
-  endmin: 10
-  endmax: 30
-  saltmin: 0.0001
-  saltmax: 0.005
-  Cfmin: 0.001
-  Cfmax: 0.005
+  endmin: 1800 # 30 min
+  endmax: 864000 # 10 days
+  saltmin: 
+  saltmax: 
+  Cfmin: 0.004
+  Cfmax: 0.004
   pmin: 0.1
-  pmax: 1.0
-  alpha_4eqmin: 0.1
+  pmax: 0.1
+  alpha_4eqmin: 0.6
   alpha_4eqmax: 0.6
-  r0min: 1.0
+  r0min: 2.0
   r0max: 2.0
-  det_coef_min: 0.01
-  det_coef_max: 4.0
-  repeat: 2
+  det_coef_min: 3.05
+  det_coef_max: 3.05
+  repeat: 1
   timelimit: # None
   flow_type: continuous
 
 grid_param:
-  gridfile: 
-  flume_length: 4.2
-  flume_width: 1.9
-  spacing: 0.05
-  slope_outside: 0.1
-  slope_inside: 0.1
-  slope_basin: 0.05
-  slope_basin_break: 3.0
-  canyon_basin_break: 3.0
-  canyon_center: 0.8
-  canyon_half_width: 1.0
-  canyon: canyon
-  noise: 0.0
-  inlet_width: 0.64
-  inlet_length: 0.3
+  grid_file: basin_l16_w8_dx100m.npy
+  flume_length: 
+  flume_width: 
+  spacing: 100
+  slope_outside:
+  slope_inside: 
+  slope_basin: 
+  slope_basin_break: 
+  canyon_basin_break:
+  canyon_center: 
+  canyon_half_width:
+  canyon:
+  noise:
+
+boundary_condition:
+  top_edge: fixed_value
+  bottom_edge: fixed_gradient
+  left_edge: fixed_gradient
+  right_edge: fixed_gradient
+
+inlet_condition:
+  inlet_edge: 
+  inlet_width: 1000
+  h_ini: 
+  C_ini: 
+  U_ini: 
 
 model_param:
   h_init: 0.0
   Ch_w: 10.0e-10
-  h_w: 0.001
+  h_w: 0.01
   alpha: 0.1
   Cf: 0.004
   g: 9.81
-  R: 0.49
+  R: 1.65
   Ds: 
-    - 2.1e-4
-    - 1.49e-4 
-    - 1.05e-4 
-    - 7.43e-5 
-    - 4.0e-6
+    - 2.0e-5 # silt
+    - 3.0e-6 # clay
   lambda_p: 0.4
   r0: 2.0
   nu: 1.010e-6
   kappa: 0.05
   nu_a: 0.75
-  implicit_num: 100
-  implicit_threshold: 1.0e-10
+  implicit_num: 300
+  implicit_threshold: 1.0e-12
   C_init: 0.0
   gamma: 0.35
-  la: 0.003
+  la: 0.01
   water_entrainment: True
   water_detrainment: True
   detrainment_coef: 3.05
   suspension: True
-  sed_entrainment_func: GP1991exp
-  no_erosion: True
-  bedload_transport: True
+  sed_entrainment_func: GP1991field
+  no_erosion: False
+  bedload_transport: False
   model: 4eq
-  salt: True
-  alpha_4eq: 0.4
+  salt: False
+  alpha_4eq: 0.6
   karman: 0.4
-  p: 1.0
+  p: 0.1
+  multi_flow: True

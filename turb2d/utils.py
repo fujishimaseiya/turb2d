@@ -168,6 +168,7 @@ def create_topography(
         grid = create_topography_from_npy(gridfile=grid_file, spacing=spacing, config_file=None)
 
     return grid
+
 def create_child_topography(
         parent_grid,
         config_file=None,
@@ -784,8 +785,9 @@ def initialize_grid_fields(grid, config_file):
 
 def set_inlet_condition(
     grid,
+    inlet,
+    inlet_link, 
     config_file=None,
-    inlet_edge=None,
     C_ini=[0.001, 0.001, 0.001],
     h_ini=0.1,
     U_ini=0.1,
@@ -822,9 +824,14 @@ def set_inlet_condition(
             config = yaml.safe_load(yml)
         inlet_edge = config['inlet_condition']['inlet_edge']
         inlet_width = config['inlet_condition']['inlet_width']
-        C_ini = config['inlet_condition']['C_ini']
-        h_ini = config['inlet_condition']['h_ini']
-        U_ini = config['inlet_condition']['U_ini']
+        if config['model_param']['multi_flow'] is True:
+            C_ini = C_ini
+            h_ini = h_ini
+            U_ini = U_ini
+        else:
+            C_ini = config['inlet_condition']['C_ini']
+            h_ini = config['inlet_condition']['h_ini']
+            U_ini = config['inlet_condition']['U_ini']
 
     else:
         # check inlet_edge
@@ -842,6 +849,45 @@ def set_inlet_condition(
             else:
                 C_ini = np.array(C_ini).reshape(len(C_ini), 1)
         
+    # # set inlet region
+    # if inlet_edge is None and inlet_width is not None:
+    #     flume_width = grid.x_of_node.max()
+    #     inlet_edge = [(flume_width - inlet_width) / 2.0, (flume_width + inlet_width) / 2.0]
+
+    # inlet = np.where(
+    #     (grid.x_of_node >= inlet_edge[0])
+    #     & (grid.x_of_node <= inlet_edge[1])
+    #     & (grid.y_of_node == grid.y_of_node.max())
+    # )
+    # inlet_link = np.where(
+    #     (grid.midpoint_of_link[:, 0] >= inlet_edge[0])
+    #     & (grid.midpoint_of_link[:, 0] <= inlet_edge[1])
+    #     & (grid.midpoint_of_link[:, 1] == grid.y_of_node.max())
+    # )
+
+    # set condition at inlet
+    grid.at_node["flow__depth"][inlet] = h_ini
+    for i in range(len(C_ini)):
+        grid.at_node["flow__sediment_concentration_{}".format(i)][inlet] = C_ini[i]
+    grid.at_node["flow__horizontal_velocity_at_node"][inlet] = 0.0
+    grid.at_node["flow__vertical_velocity_at_node"][inlet] = -U_ini
+    grid.at_link["flow__horizontal_velocity"][inlet_link] = 0.0
+    grid.at_link["flow__vertical_velocity"][inlet_link] = -U_ini
+    grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini)
+
+    # set boundary condition at inlet
+    grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
+    top_edge_except_inlet = np.setxor1d(grid.nodes_at_top_edge, inlet)
+    grid.status_at_node[top_edge_except_inlet] = grid.BC_NODE_IS_FIXED_GRADIENT
+
+def set_inlet_region(grid, config_file, inlet_edge=None, inlet_width=None):
+
+    if config_file is not None:
+        with open(config_file) as yml:
+            config = yaml.safe_load(yml)
+        inlet_edge = config['inlet_condition']['inlet_edge']
+        inlet_width = config['inlet_condition']['inlet_width']
+
     # set inlet region
     if inlet_edge is None and inlet_width is not None:
         flume_width = grid.x_of_node.max()
@@ -858,18 +904,7 @@ def set_inlet_condition(
         & (grid.midpoint_of_link[:, 1] == grid.y_of_node.max())
     )
 
-    # set condition at inlet
-    grid.at_node["flow__depth"][inlet] = h_ini
-    for i in range(len(C_ini)):
-        grid.at_node["flow__sediment_concentration_{}".format(i)][inlet] = C_ini[i]
-    grid.at_node["flow__horizontal_velocity_at_node"][inlet] = 0.0
-    grid.at_node["flow__vertical_velocity_at_node"][inlet] = -U_ini
-    grid.at_link["flow__horizontal_velocity"][inlet_link] = 0.0
-    grid.at_link["flow__vertical_velocity"][inlet_link] = -U_ini
-    grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini)
-
-    # set boundary condition at inlet
-    grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
+    return inlet, inlet_link
 
 def set_boundary_condition(grid, config_file, top_edge_bc=None, bottom_edge_bc=None, left_edge_bc=None, right_edge_bc=None):
     """ set boundary condition at the edges of a grid

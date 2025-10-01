@@ -2,7 +2,7 @@ import os
 os.environ['MKL_NUM_THREADS'] = '1'
 os.environ['OMP_NUM_THREADS'] = '1'
 from turb2d import TurbidityCurrent2D
-from turb2d.utils import create_topography, create_init_flow_region, create_topography_from_npy
+from turb2d.utils import create_topography, create_init_flow_region, set_inlet_condition, set_boundary_condition, initialize_grid_fields, set_inlet_region
 import numpy as np
 from contextlib import contextmanager
 import signal
@@ -229,10 +229,7 @@ class RunMultiFlows():
         create grid object
         '''
 
-        if self.run_multi_config['grid_param']['gridfile'] is None:
-            grid = create_topography(config_file=self.run_multi_config_file)
-        else:
-            grid = create_topography_from_npy(filename=self.run_multi_config['grid_param']['gridfile'], spacing=self.run_multi_config['grid_param']['spacing'])
+        grid = create_topography(config_file=self.run_multi_config_file)
 
         return grid
 
@@ -292,79 +289,101 @@ class RunMultiFlows():
 
     def produce_continuous_flow(self, grid, C_ini, U_ini, h_ini, cf_ini, alpha4eq_ini, r0_ini, p_gp1991, det_coef):
 
-        # set boundary condition
-        grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
-        grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
-        grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
-        grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
-        
+        # initialize grid fields
+        initialize_grid_fields(grid, config_file=self.run_multi_config_file)
+
         # set inlet region
-        inlet_edge = [(self.run_multi_config['grid_param']['flume_width'] - self.run_multi_config['grid_param']['inlet_width']) / 2.0, 
-                      (self.run_multi_config['grid_param']['flume_width'] + self.run_multi_config['grid_param']['inlet_width']) / 2.0]
+        inlet, inlet_link = set_inlet_region(grid, config_file=self.run_multi_config_file, inlet_edge=None, inlet_width=None)
 
-        inlet = np.where((grid.x_of_node >= inlet_edge[0])
-                                & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == np.max(grid.y_of_node)))
-        inlet_link = np.where((grid.midpoint_of_link[:,0] >= inlet_edge[0]) & (grid.midpoint_of_link[:,0] <= inlet_edge[1])
-                        & (grid.midpoint_of_link[:,1] == np.max(grid.y_of_node)))
+        # set inlet condition
+        set_inlet_condition(grid=grid,
+                            inlet=inlet,
+                            inlet_link=inlet_link,
+                            config_file=self.run_multi_config_file, 
+                            C_ini=C_ini, 
+                            h_ini=h_ini, 
+                            U_ini=U_ini)
+
+        set_boundary_condition(grid=grid, 
+                               config_file=self.run_multi_config_file,
+                               top_edge_bc=None,
+                               bottom_edge_bc=None,
+                               left_edge_bc=None, 
+                               right_edge_bc=None)
+
+        # # set boundary condition
+        # grid.status_at_node[grid.nodes_at_top_edge] = grid.BC_NODE_IS_FIXED_VALUE
+        # grid.status_at_node[grid.nodes_at_bottom_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
+        # grid.status_at_node[grid.nodes_at_left_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
+        # grid.status_at_node[grid.nodes_at_right_edge] = grid.BC_NODE_IS_FIXED_GRADIENT
+        
+        # # set inlet region
+        # inlet_edge = [(self.run_multi_config['grid_param']['flume_width'] - self.run_multi_config['grid_param']['inlet_width']) / 2.0, 
+        #               (self.run_multi_config['grid_param']['flume_width'] + self.run_multi_config['grid_param']['inlet_width']) / 2.0]
+
         # inlet = np.where((grid.x_of_node >= inlet_edge[0])
-        #                         & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == self.run_multi_config['grid_param']['flume_length']))
+        #                         & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == np.max(grid.y_of_node)))
         # inlet_link = np.where((grid.midpoint_of_link[:,0] >= inlet_edge[0]) & (grid.midpoint_of_link[:,0] <= inlet_edge[1])
-        #                         & (grid.midpoint_of_link[:,1] == self.run_multi_config['grid_param']['flume_length']))
+        #                 & (grid.midpoint_of_link[:,1] == np.max(grid.y_of_node)))
+        # # inlet = np.where((grid.x_of_node >= inlet_edge[0])
+        # #                         & (grid.x_of_node <= inlet_edge[1]) & (grid.y_of_node == self.run_multi_config['grid_param']['flume_length']))
+        # # inlet_link = np.where((grid.midpoint_of_link[:,0] >= inlet_edge[0]) & (grid.midpoint_of_link[:,0] <= inlet_edge[1])
+        # #                         & (grid.midpoint_of_link[:,1] == self.run_multi_config['grid_param']['flume_length']))
 
-        grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
+        # grid.status_at_node[inlet] = grid.BC_NODE_IS_FIXED_VALUE
 
-        # check number of grain size classes
-        if type(C_ini) is float or type(C_ini) is np.float64:
-            C_ini_i = np.array([C_ini])
-        else:
-            C_ini_i = np.array(C_ini).reshape(
-            len(C_ini), 1
-        )
-        # initialize flow parameters
-        for i in range(len(C_ini_i)):
-            try:
-                grid.add_zeros("flow__sediment_concentration_{}".format(i), at="node")
-            except FieldError:
-                grid.at_node["flow__sediment_concentration_{}".format(i)][:] = 0.0
-            try:
-                grid.add_zeros("bed__sediment_volume_per_unit_area_{}".format(i), at="node")
-            except FieldError:
-                grid.at_node["bed__sediment_volume_per_unit_area_{}".format(i)][:] = 0.0
+        # # check number of grain size classes
+        # if type(C_ini) is float or type(C_ini) is np.float64:
+        #     C_ini_i = np.array([C_ini])
+        # else:
+        #     C_ini_i = np.array(C_ini).reshape(
+        #     len(C_ini), 1
+        # )
+        # # initialize flow parameters
+        # for i in range(len(C_ini_i)):
+        #     try:
+        #         grid.add_zeros("flow__sediment_concentration_{}".format(i), at="node")
+        #     except FieldError:
+        #         grid.at_node["flow__sediment_concentration_{}".format(i)][:] = 0.0
+        #     try:
+        #         grid.add_zeros("bed__sediment_volume_per_unit_area_{}".format(i), at="node")
+        #     except FieldError:
+        #         grid.at_node["bed__sediment_volume_per_unit_area_{}".format(i)][:] = 0.0
 
-        try:
-            grid.add_zeros("flow__sediment_concentration_total", at="node")
-        except FieldError:
-            grid.at_node["flow__sediment_concentration_total"][:] = 0.0
-        try:
-            grid.add_zeros("flow__depth", at="node")
-        except FieldError:
-            grid.at_node["flow__depth"][:] = 0.0
-        try:
-            grid.add_zeros("flow__horizontal_velocity_at_node", at="node")
-        except FieldError:
-            grid.at_node["flow__horizontal_velocity_at_node"][:] = 0.0
-        try:
-            grid.add_zeros("flow__vertical_velocity_at_node", at="node")
-        except FieldError:
-            grid.at_node["flow__vertical_velocity_at_node"][:] = 0.0
-        try:
-            grid.add_zeros("flow__horizontal_velocity", at="link")
-        except FieldError:
-            grid.at_link["flow__horizontal_velocity"][:] = 0.0
-        try:
-            grid.add_zeros("flow__vertical_velocity", at="link")
-        except FieldError:
-            grid.at_link["flow__vertical_velocity"][:] = 0.0
+        # try:
+        #     grid.add_zeros("flow__sediment_concentration_total", at="node")
+        # except FieldError:
+        #     grid.at_node["flow__sediment_concentration_total"][:] = 0.0
+        # try:
+        #     grid.add_zeros("flow__depth", at="node")
+        # except FieldError:
+        #     grid.at_node["flow__depth"][:] = 0.0
+        # try:
+        #     grid.add_zeros("flow__horizontal_velocity_at_node", at="node")
+        # except FieldError:
+        #     grid.at_node["flow__horizontal_velocity_at_node"][:] = 0.0
+        # try:
+        #     grid.add_zeros("flow__vertical_velocity_at_node", at="node")
+        # except FieldError:
+        #     grid.at_node["flow__vertical_velocity_at_node"][:] = 0.0
+        # try:
+        #     grid.add_zeros("flow__horizontal_velocity", at="link")
+        # except FieldError:
+        #     grid.at_link["flow__horizontal_velocity"][:] = 0.0
+        # try:
+        #     grid.add_zeros("flow__vertical_velocity", at="link")
+        # except FieldError:
+        #     grid.at_link["flow__vertical_velocity"][:] = 0.0
             
-        # set condition at inlet
-        grid.at_node['flow__depth'][inlet] = h_ini
-        for i in range(len(C_ini_i)):
-            grid.at_node['flow__sediment_concentration_{}'.format(i)][inlet] = C_ini_i[i]
-        grid.at_node['flow__horizontal_velocity_at_node'][inlet] = 0.0
-        grid.at_node['flow__vertical_velocity_at_node'][inlet] = -U_ini
-        grid.at_link['flow__horizontal_velocity'][inlet_link] = 0.0
-        grid.at_link['flow__vertical_velocity'][inlet_link] = -U_ini
-        grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
+        # # set condition at inlet
+        # grid.at_node['flow__depth'][inlet] = h_ini
+        # for i in range(len(C_ini_i)):
+        #     grid.at_node['flow__sediment_concentration_{}'.format(i)][inlet] = C_ini_i[i]
+        # grid.at_node['flow__horizontal_velocity_at_node'][inlet] = 0.0
+        # grid.at_node['flow__vertical_velocity_at_node'][inlet] = -U_ini
+        # grid.at_link['flow__horizontal_velocity'][inlet_link] = 0.0
+        # grid.at_link['flow__vertical_velocity'][inlet_link] = -U_ini
+        # grid.at_node["flow__sediment_concentration_total"][inlet] = np.sum(C_ini_i)
         
         tc = TurbidityCurrent2D(grid,
                                 inlet=inlet,
