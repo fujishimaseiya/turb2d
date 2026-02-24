@@ -68,3 +68,5 @@ model_param:
   flow_type: continuous
   one_way_nesting: False
   two_way_nesting: False
+  multi_flow: False
+  active_layer_fraction: 

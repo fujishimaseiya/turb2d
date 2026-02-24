@@ -24,6 +24,7 @@ import yaml
 import netCDF4
 import csv
 from turb2d.nesting import OneWayNesting, TwoWayNesting
+import warnings
 """A component of landlab that simulates a turbidity current on 2D grids
 
 This component simulates turbidity currents using the 2-D numerical model of
@@ -150,6 +151,7 @@ class TurbidityCurrent2D(Component):
         g=9.81,
         R=1.65,
         Ds=100 * 10 ** -6,
+        active_layer_fraction=None,
         lambda_p=0.4,
         r0=1.5,
         nu=1.010 * 10 ** -6,
@@ -209,6 +211,10 @@ class TurbidityCurrent2D(Component):
         Ds: float of list or ndarray, optional
             Sediment diameter(m). If a list of grain sizes is given, the model deals
              with multiple grain size classes
+        active_layer_fraction: list or ndarray, optional
+            Initial fraction of each grain size class in the active layer.
+            It must be one value for each grain size class, and the sum of the values must be 1.
+            If not given, it is assumed to be equal for all grain size classes.
         lambda_p: float, optional
             Bed sediment porosity(1)
         nu: float, optional
@@ -319,6 +325,17 @@ class TurbidityCurrent2D(Component):
             self.parent_grid = parent_grid
             self.child_grid = child_grid
 
+            if isinstance(active_layer_fraction, list):
+                if len(active_layer_fraction) != self.number_gclass:
+                    raise ValueError("active_layer_fraction must have the same length as the number of grain size classes.")
+            elif isinstance(active_layer_fraction, np.floating) or isinstance(active_layer_fraction, float):
+                active_layer_fraction = [active_layer_fraction]
+            elif active_layer_fraction is None:
+                pass
+            else:
+                raise ValueError("active_layer_fraction must be either a list or a float. "
+                                 "If None, equal fractions are assumed for all grain-size classes.")
+
         else:
             with open(config_path) as yml:
                 config = yaml.safe_load(yml)
@@ -371,6 +388,19 @@ class TurbidityCurrent2D(Component):
             nesting = (self.one_way_nesting or self.two_way_nesting)
             if nesting is True and self.parent_grid is False and self.child_grid is True:
                 self.first_nesting = True
+
+            active_layer_fraction = config['model_param']['active_layer_fraction']
+            if isinstance(active_layer_fraction, list):
+                if len(active_layer_fraction) != self.number_gclass:
+                    raise ValueError("active_layer_fraction must have the same length as the number of grain size classes.")
+            elif isinstance(active_layer_fraction, np.floating) or isinstance(active_layer_fraction, float):
+                active_layer_fraction = [active_layer_fraction]
+            elif active_layer_fraction is None:
+                pass
+            else:
+                raise ValueError("active_layer_fraction must be either a list or a float ."
+                                 "If None, equal fractions are assumed for all grain-size classes.")
+            
                 
         # Now setting up fields at nodes and links
         try:
@@ -412,33 +442,57 @@ class TurbidityCurrent2D(Component):
                     "bed__sediment_volume_per_unit_area_" + str(i)
                 ]
         try:
+            self.bed_active_layer = np.empty(
+                [self.number_gclass, grid.number_of_nodes], dtype=float
+                )
             if self.salt == False:
-                self.bed_active_layer = np.empty(
-                    [self.number_gclass, grid.number_of_nodes], dtype=float
-                )
-                for i in range(self.number_gclass):
-                    self.bed_active_layer[i, :] = (
-                        grid.add_ones(
-                            "bed__active_layer_fraction_" + str(i),
-                            at="node",
-                            units=self._var_units["bed__active_layer_fraction_i"],
+                if active_layer_fraction is None:
+                    for i in range(self.number_gclass):
+                        self.bed_active_layer[i, :] = (
+                            grid.add_ones(
+                                "bed__active_layer_fraction_" + str(i),
+                                at="node",
+                                units=self._var_units["bed__active_layer_fraction_i"],
+                            )
+                            / self.number_gclass
                         )
-                        / self.number_gclass
-                    )
+                elif active_layer_fraction is not None:
+                    for i in range(self.number_gclass):
+                        self.bed_active_layer[i, :] = (
+                            grid.add_ones(
+                                "bed__active_layer_fraction_" + str(i),
+                                at="node",
+                                units=self._var_units["bed__active_layer_fraction_i"],
+                            )
+                            * active_layer_fraction[i]
+                        )
             else:
-                self.bed_active_layer = np.empty(
-                    [self.number_gclass, grid.number_of_nodes], dtype=float
-                )
-                for i in range(self.number_gclass):
-                    self.bed_active_layer[i, :] = (
-                        grid.add_ones(
-                            "bed__active_layer_fraction_" + str(i),
-                            at="node",
-                            units=self._var_units["bed__active_layer_fraction_i"],
+                if active_layer_fraction is None:
+                    for i in range(self.number_gclass):
+                        self.bed_active_layer[i, :] = (
+                            grid.add_ones(
+                                "bed__active_layer_fraction_" + str(i),
+                                at="node",
+                                units=self._var_units["bed__active_layer_fraction_i"],
+                            )
+                            / (self.number_gclass-1)
                         )
-                        / (self.number_gclass-1)
-                    )
-                self.bed_active_layer[-1, :] = 0.0
+                    self.bed_active_layer[-1, :] = 0.0
+                elif active_layer_fraction is not None:
+                    if active_layer_fraction[-1] != 0.0:
+                        warnings.warn("The last value of active_layer_fraction should be 0 for salt. "
+                                      "The fraction of active layer for salt particle is forced to be 0.",
+                                      UserWarning)
+                    for i in range(self.number_gclass):
+                        self.bed_active_layer[i, :] = (
+                            grid.add_ones(
+                                "bed__active_layer_fraction_" + str(i),
+                                at="node",
+                                units=self._var_units["bed__active_layer_fraction_i"],
+                            )
+                            * active_layer_fraction[i]
+                        )
+                    self.bed_active_layer[-1, :] = 0.0
         except FieldError:
             if self.salt == False:
                 for i in range(self.number_gclass):
@@ -1125,26 +1179,31 @@ class TurbidityCurrent2D(Component):
                 idx = np.argmin(np.abs(self.time_interp-self.local_elapsed_time))
                 num_nonzero = np.count_nonzero(self.h_node_child_grid_condition[idx, :])
                 num_nan = np.count_nonzero(np.isnan(self.h_node_child_grid_condition[idx, :]))
-
                 if num_nan > 0:
                     raise ValueError("There are NaN values in the child grid condition array. Please check the input data.")
                 elif self.first_nesting is True and num_nonzero > 0:
                     # もし，idxで指定した配列に値が存在し，かつ値のある配列を入れるのが初めてなら．空間補間した配列を入れる
                     # それ以外は，境界のみを更新する．
-                    self.h[:] = self.h_node_child_grid_condition[idx, :]
-                    self.u_node[:] = self.u_node_child_grid_condition[idx, :]
-                    self.v_node[:] = self.v_node_child_grid_condition[idx, :]
-                    self.C_i[:, :] = self.C_i_node_child_grid_condition[idx, :, :]
-                    for j in range(self.number_gclass):
-                        self.Ch_i[j, :] = self.C_i[j, :] * self.h
-                    self.C[:] = np.sum(self.C_i, axis=0)
-                    self.Ch[:] = np.sum(self.Ch_i, axis=0)
-                    # self.bed_thick[:] = self.bed_thick_node_child_grid_condition[idx, :]
-                    self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[idx, :, :]
-                    self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
-                    if self.model == '4eq':
-                        self.Kh_node[:] = self.Kh_node_child_grid_condition[idx, :]
-                    self.first_nesting = False
+                    child_h = self.h_node_child_grid_condition[idx, :]
+                    child_Ch = np.sum(self.C_i_node_child_grid_condition[idx, :, :], axis=0)*child_h
+                    wet = (child_Ch > self.Ch_w) & (child_h > self.h_w)
+                    if np.all(wet == False):
+                        pass
+                    else:
+                        self.h[:] = self.h_node_child_grid_condition[idx, :]
+                        self.u_node[:] = self.u_node_child_grid_condition[idx, :]
+                        self.v_node[:] = self.v_node_child_grid_condition[idx, :]
+                        self.C_i[:, :] = self.C_i_node_child_grid_condition[idx, :, :]
+                        for j in range(self.number_gclass):
+                            self.Ch_i[j, :] = self.C_i[j, :] * self.h
+                        self.C[:] = np.sum(self.C_i, axis=0)
+                        self.Ch[:] = np.sum(self.Ch_i, axis=0)
+                        # self.bed_thick[:] = self.bed_thick_node_child_grid_condition[idx, :]
+                        self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[idx, :, :]
+                        self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
+                        if self.model == '4eq':
+                            self.Kh_node[:] = self.Kh_node_child_grid_condition[idx, :]
+                        self.first_nesting = False
                     
                 elif self.first_nesting is False and num_nonzero > 0:
                     # 境界のみを更新する
@@ -1193,6 +1252,7 @@ class TurbidityCurrent2D(Component):
                     one_way_nesting_method.flow_relaxation_scheme()
                                     
             elif (self.two_way_nesting is True) and (self.parent_grid is False) and (self.child_grid is True):
+                print('two_way_nesting is True')
                 num_nonzero = np.count_nonzero(self.h_node_child_grid_condition[:])
                 num_nan = np.count_nonzero(np.isnan(self.h_node_child_grid_condition[:]))
                 if num_nan > 0:
@@ -1465,6 +1525,7 @@ class TurbidityCurrent2D(Component):
 
         # Remove negative values of Kh
         self.Kh_temp[self.Kh_temp < 0] = 0.0
+        self.h_temp[self.h_temp < 0] = 0.0
         
         # update gradient terms
         self.update_gradients2()
