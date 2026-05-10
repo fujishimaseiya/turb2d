@@ -30,6 +30,7 @@ multi_param:
   repeat: 1
   timelimit: # None
   flow_type: continuous
+  is_suspended_sediment: [False, True]
 
 grid_param:
   grid_file: basin_l16_w8_dx100m.npy

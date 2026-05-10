@@ -82,12 +82,30 @@ class RunMultiFlows():
                 if C_total_min is None and C_total_max is None:
                     if run_multi_config["model_param"]["salt"] is True:
                         c_i = np.random.uniform(Cmin, Cmax, (run_multi_config["multi_param"]["num_runs"], len(run_multi_config["model_param"]['Ds'])-1))
+                        # grain size class which is included in the initial suspended sediment
+                        is_suspended_sediment = run_multi_config["multi_param"]["is_suspended_sediment"]
+                        for i in range(len(is_suspended_sediment)):
+                            if is_suspended_sediment[i] is False:
+                                c_i[:, i] = 0.0
+                            elif is_suspended_sediment[i] is True:
+                                pass
+                            else:
+                                raise ValueError("Bool values should be enterd in is_suspended_sediment")
                         salt = np.array([np.random.uniform(saltmin, saltmax, run_multi_config["multi_param"]['num_runs'])])
                         salt = salt.reshape((run_multi_config["multi_param"]["num_runs"], 1))
                         C_ini = np.append(c_i, salt, axis=1)
 
                     elif run_multi_config["model_param"]["salt"] is False:
                         c_i = np.random.uniform(Cmin, Cmax, (run_multi_config["multi_param"]["num_runs"], len(run_multi_config["model_param"]['Ds'])))
+                        # grain size class which is included in the initial suspended sediment
+                        is_suspended_sediment = run_multi_config["multi_param"]["is_suspended_sediment"]
+                        for i in range(len(is_suspended_sediment)):
+                            if is_suspended_sediment[i] is False:
+                                c_i[:, i] = 0.0
+                            elif is_suspended_sediment[i] is True:
+                                pass
+                            else:
+                                raise ValueError("Bool values should be enterd in is_suspended_sediment")
                         C_ini = c_i
                     
                     else:
@@ -100,6 +118,16 @@ class RunMultiFlows():
                         frac_conc = np.random.rand(num_runs, len(run_multi_config["model_param"]['Ds'])-1)
                         frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
                         c_i = frac_conc_norm*C_total.reshape(-1, 1)
+
+                        is_suspended_sediment = run_multi_config["multi_param"]["is_suspended_sediment"]
+                        for i in range(len(is_suspended_sediment)):
+                            if is_suspended_sediment[i] is False:
+                                c_i[:, i] = 0.0
+                            elif is_suspended_sediment[i] is True:
+                                pass
+                            else:
+                                raise ValueError("Bool values should be enterd in is_suspended_sediment")
+                            
                         salt = np.array([np.random.uniform(saltmin, saltmax, run_multi_config["multi_param"]['num_runs'])])
                         salt = salt.reshape((run_multi_config["multi_param"]["num_runs"], 1))
                         C_ini = np.append(c_i, salt, axis=1)
@@ -109,6 +137,14 @@ class RunMultiFlows():
                         frac_conc_norm = frac_conc/(np.sum(frac_conc, axis=1).reshape(-1, 1))
                         c_i = frac_conc_norm*C_total.reshape(-1, 1)
                         C_ini = c_i
+                        is_suspended_sediment = run_multi_config["multi_param"]["is_suspended_sediment"]
+                        for i in range(len(is_suspended_sediment)):
+                            if is_suspended_sediment[i] is False:
+                                c_i[:, i] = 0.0
+                            elif is_suspended_sediment[i] is True:
+                                pass
+                            else:
+                                raise ValueError("Bool values should be enterd in is_suspended_sediment")
                     else:
                         raise ValueError("Bool values should be enterd in run_multi_config[model_param][salt]")
                 else:
@@ -396,6 +432,7 @@ class RunMultiFlows():
                                 g=self.run_multi_config["model_param"]["g"],
                                 R=self.run_multi_config["model_param"]["R"],
                                 Ds=self.run_multi_config["model_param"]["Ds"],
+                                active_layer_fraction=self.run_multi_config["model_param"]["active_layer_fraction"],
                                 lambda_p=self.run_multi_config["model_param"]["lambda_p"],
                                 r0=r0_ini,
                                 nu=self.run_multi_config["model_param"]["nu"],
@@ -406,17 +443,18 @@ class RunMultiFlows():
                                 C_init=self.run_multi_config["model_param"]["C_init"],
                                 gamma=self.run_multi_config["model_param"]["gamma"],
                                 la=self.run_multi_config["model_param"]["la"],
+                                suspension=self.run_multi_config["model_param"]["suspension"],
                                 water_entrainment=self.run_multi_config["model_param"]["water_entrainment"],
                                 water_detrainment=self.run_multi_config["model_param"]["water_detrainment"],
                                 detrainment_coef=det_coef,
-                                suspension=self.run_multi_config["model_param"]["suspension"],
                                 sed_entrainment_func=self.run_multi_config["model_param"]["sed_entrainment_func"],
                                 no_erosion=self.run_multi_config["model_param"]["no_erosion"],
                                 bedload_transport=self.run_multi_config["model_param"]["bedload_transport"],
                                 salt = self.run_multi_config["model_param"]["salt"],
                                 model=self.run_multi_config["model_param"]["model"],
                                 alpha_4eq = alpha4eq_ini,
-                                p_gp1991=p_gp1991
+                                p_gp1991=p_gp1991,
+                                flow_type=self.flow_type
                                 )
 
         return tc
