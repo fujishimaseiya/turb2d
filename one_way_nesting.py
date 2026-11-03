@@ -6,7 +6,7 @@ os.environ['MKL_NUM_THREADS'] = '6'
 os.environ['OMP_NUM_THREADS'] = '6'
 import numpy as np
 from turb2d.utils import create_topography
-from turb2d.utils import create_nested_grid, initialize_grid_fields, set_inlet_condition, set_boundary_condition
+from turb2d.utils import create_nested_grid, initialize_grid_fields, set_inlet_condition, set_boundary_condition, set_inlet_region
 from landlab import RasterModelGrid
 from turb2d import TurbidityCurrent2D
 import time
@@ -18,9 +18,8 @@ import yaml
 from turb2d.nesting import OneWayNesting, TwoWayNesting
 import matplotlib.pyplot as plt
 
-
 # import config file
-with open ('config_runturb2d.yml', 'r') as f:
+with open ('config_runturb2d_child.yml', 'r') as f:
     config = yaml.safe_load(f)
 nested_region = [config['grid_param']['nested_region_xmin'], 
                 config['grid_param']['nested_region_xmax'],
@@ -28,29 +27,24 @@ nested_region = [config['grid_param']['nested_region_xmin'],
                 config['grid_param']['nested_region_ymax']]
 
 # create initial topography
-parent_grid, child_grid, nested_region_idx = create_nested_grid(config_file="config_runturb2d.yml")
+parent_grid, child_grid, nested_region_idx = create_nested_grid(config_file_parent="config_runturb2d_parent.yml", config_file_child="config_runturb2d_child.yml", nested_region=nested_region)
 
 # initialize grid fields
-initialize_grid_fields(parent_grid, config_file="config_runturb2d.yml")
-initialize_grid_fields(child_grid, config_file="config_runturb2d.yml")
+initialize_grid_fields(parent_grid, config_file="config_runturb2d_parent.yml")
+initialize_grid_fields(child_grid, config_file="config_runturb2d_child.yml")
 
 # set inlet condition
-set_inlet_condition(grid=parent_grid, config_file="config_runturb2d.yml", inlet_edge=None)
+inlet, inlet_link = set_inlet_region(parent_grid, config_file="config_runturb2d_parent.yml")
+set_inlet_condition(grid=parent_grid, inlet=inlet, inlet_link=inlet_link, config_file="config_runturb2d_parent.yml")
 
 # set boundary condition of parent grid
-set_boundary_condition(grid=parent_grid, 
-                       top_edge_bc='fixed_value',
-                       bottom_edge_bc='fixed_gradient',
-                       left_edge_bc='fixed_gradient', 
-                       right_edge_bc='fixed_gradient')
+set_boundary_condition(grid=parent_grid,
+                       config_file="config_runturb2d_parent.yml")
 set_boundary_condition(grid=child_grid, 
-                       top_edge_bc='fixed_value',
-                       bottom_edge_bc='fixed_value',
-                       left_edge_bc='fixed_value', 
-                       right_edge_bc='fixed_value')
+                       config_file="config_runturb2d_child.yml")
 
 # TurbidityCurrent2D objects
-tc_parent = TurbidityCurrent2D(parent_grid, config_path="config_runturb2d.yml",  parent_grid=True, child_grid=False)
+tc_parent = TurbidityCurrent2D(parent_grid, config_path="config_runturb2d_parent.yml",  parent_grid=True, child_grid=False)
 tc_child = TurbidityCurrent2D(child_grid, config_path="config_runturb2d_child.yml", parent_grid=False, child_grid=True)
 
 # plot nested region
@@ -73,24 +67,27 @@ plt.savefig('nested_region.png')
 # In this calculation, only the calculation results of the child grid is saved.
 t = time.time()
 tc_parent.save_nc('tc{:04d}_parent.nc'.format(0))
-tc_child.save_nc('tc{:04d}.nc'.format(0))
+tc_child.save_nc('tc{:04d}_child.nc'.format(0))
 Ch_init = np.sum(tc_child.C * tc_child.h)
-last = 8640
+last = 1000
 num = 1
 num_repeat = 1
-save_interval = 100
-one_way_nesting = OneWayNesting(tc_parent=tc_parent, tc_child=tc_child, dt=1.0, num_relaxation_grid=5)
+save_interval = 10
+# dt of the nesting object must be the same as the dt of one parent step (= dt of run_one_step)
+dt_step = 1.
+one_way_nesting = OneWayNesting(tc_parent=tc_parent, tc_child=tc_child, dt=dt_step, num_relaxation_grid=0)
 
 for j in range(num_repeat):
     for i in tqdm(range(1, last + 1), disable=False):
         # parent grid calculation 
-        tc_parent.run_one_step(dt=1.0, repeat=j, last=i)
-        tc_parent.save_nc('tc{:04d}_parent.nc'.format(num))
-        # calculate boundary conditions of a child grid from a parent grid
-        one_way_nesting.compute_child_grid_condition_from_parent_grid(time_step=0.0001)
-        tc_child.run_one_step(dt=1.0, repeat=j, last=i)
+        tc_parent.run_one_step(dt=dt_step, repeat=j, last=i)
         if i % save_interval == 0:
-            tc_child.save_nc('tc{:04d}.nc'.format(num))
+            tc_parent.save_nc('tc{:04d}_parent.nc'.format(num))
+        # calculate boundary conditions of a child grid from a parent grid
+        one_way_nesting.compute_child_grid_condition_from_parent_grid(time_step=0.01)
+        tc_child.run_one_step(dt=dt_step, repeat=j, last=i, one_way_nesting_method=one_way_nesting)
+        if i % save_interval == 0:
+            tc_child.save_nc('tc{:04d}_child.nc'.format(num))
         num = num + 1
-    tc_child.save_grid('tc{:04d}.nc'.format(num-2))
+    tc_child.save_grid('tc{:04d}_child.nc'.format(num-2))
 print('elapsed time: {} sec.'.format(time.time() - t))

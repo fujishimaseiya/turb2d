@@ -199,22 +199,28 @@ def create_child_topography(
         ymax = config['grid_param']['nested_region_ymax']
         child_grid_spacing = config['grid_param']['spacing']
     parent_grid_spacing = parent_grid.spacing[0]
+
+    parent_grid_spacing = Decimal(str(parent_grid_spacing))
+    ymax = Decimal(str(ymax))
+    ymin = Decimal(str(ymin))
+    xmax = Decimal(str(xmax))
+    xmin = Decimal(str(xmin))
     # Initialize the child grid
     # If xmin, xmax, ymin and ymax are not multiples of the spacing of parent grid, 
     # adjust them to the nearest multiple of the parent grid.
     if ymax % parent_grid_spacing != 0:
         ymax = round(float(ymax) / float(parent_grid_spacing)) * parent_grid_spacing
+        ymax = Decimal(str(ymax))
     if ymin % parent_grid_spacing != 0:
         ymin = round(float(ymin) / float(parent_grid_spacing)) * parent_grid_spacing
+        ymin = Decimal(str(ymin))
     if xmax % parent_grid_spacing != 0:
         xmax = round(float(xmax) / float(parent_grid_spacing)) * parent_grid_spacing
+        xmax = Decimal(str(xmax))
     if xmin % parent_grid_spacing != 0:
         xmin = round(float(xmin) / float(parent_grid_spacing)) * parent_grid_spacing
+        xmin = Decimal(str(xmin))
 
-    ymax = Decimal(str(ymax))
-    ymin = Decimal(str(ymin))
-    xmax = Decimal(str(xmax))
-    xmin = Decimal(str(xmin))
     length = (ymax - ymin)
     width = (xmax - xmin)
     child_grid_length = Decimal(str(length))
@@ -263,7 +269,7 @@ def create_child_grid_from_npy(config_file=None, parent_grid_file=None, parent_s
     if config_file is not None:
         with open(config_file) as yml:
             config = yaml.safe_load(yml)
-        child_grid_spacing = config['grid_param']['child_grid_spacing']
+        child_grid_spacing = config['grid_param']['spacing']
         xmin = config['grid_param']['nested_region_xmin']
         xmax = config['grid_param']['nested_region_xmax']
         ymin = config['grid_param']['nested_region_ymin']
@@ -273,8 +279,8 @@ def create_child_grid_from_npy(config_file=None, parent_grid_file=None, parent_s
         xmin, xmax, ymin, ymax = nested_region
     
 
-def create_nested_grid(config_parent=None,
-                       config_child=None,
+def create_nested_grid(config_file_parent=None,
+                       config_file_child=None,
                        length=8000,
                        width=2000,
                        spacing=20,
@@ -353,24 +359,28 @@ def create_nested_grid(config_parent=None,
         a child grid object
     """
     # open configuration file
-    if config_parent is not None:
-        with open(config_parent) as yml:
-            config = yaml.safe_load(yml)
-        parent_grid_spacing = config['grid_param']['grid_spacing']    
-        child_grid_spacing = config['grid_param']['child_grid_spacing']
-        xmin = config['grid_param']['nested_region_xmin']
-        xmax = config['grid_param']['nested_region_xmax']
-        ymin = config['grid_param']['nested_region_ymin']
-        ymax = config['grid_param']['nested_region_ymax']
-        parent_grid_file = config['grid_param']['grid_file']
-    else:
+    if (config_file_parent is not None) and (config_file_child is not None):
+        with open(config_file_parent) as yml:
+            config_parent = yaml.safe_load(yml)
+        with open (config_file_child) as yml:
+            config_child = yaml.safe_load(yml)
+        parent_grid_spacing = config_parent['grid_param']['spacing'] 
+        parent_grid_file = config_parent['grid_param']['grid_file']
+        child_grid_spacing = config_child['grid_param']['spacing']
+        xmin = config_child['grid_param']['nested_region_xmin']
+        xmax = config_child['grid_param']['nested_region_xmax']
+        ymin = config_child['grid_param']['nested_region_ymin']
+        ymax = config_child['grid_param']['nested_region_ymax']
+    elif (config_file_parent is not None) and (config_file_child is None):
         # Get indices of the region of interest
         xmin, xmax, ymin, ymax = nested_region
+    else:
+        raise ValueError("Please provide a configuration file for the parent and child grids or specify the nested region.")
     
     if parent_grid_file is None:
         # create parent grid
         parent_grid = create_topography(
-            config_file=config_parent,
+            config_file=config_file_parent,
             length=length,
             width=width,
             spacing=spacing,
@@ -906,7 +916,7 @@ def set_inlet_region(grid, config_file, inlet_edge=None, inlet_width=None):
 
     return inlet, inlet_link
 
-def set_boundary_condition(grid, config_file, top_edge_bc=None, bottom_edge_bc=None, left_edge_bc=None, right_edge_bc=None):
+def set_boundary_condition(grid, config_file=None, top_edge_bc=None, bottom_edge_bc=None, left_edge_bc=None, right_edge_bc=None):
     """ set boundary condition at the edges of a grid
     
        Parameters
@@ -914,8 +924,8 @@ def set_boundary_condition(grid, config_file, top_edge_bc=None, bottom_edge_bc=N
        grid: RasterModelGrid
           a landlab grid object to be used in TurbidityCurrent2D
 
-       config_file: String
-            path to a configuration file
+       config_file: String, optional
+            path to a configuration file.
 
        top_edge_bc: String
           boundary condition at the top edge. 
