@@ -2,6 +2,7 @@ TURB2D
 ========================
 
 This is a code for simulation of turbidity currents on 2D grids.
+This code is modified from `turb2d <https://github.com/narusehajime/turb2d>`_.
 
 ---------------
 Installation
