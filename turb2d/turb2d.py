@@ -1175,6 +1175,13 @@ class TurbidityCurrent2D(Component):
                 raise ValueError("Either self.one_way_nesting or self.two_way_nesting must be false.")
             
             # if you want to use nested grid and this is the child grid, boundary and initial conditions were set.
+            # NOTE: The boundary condition at the final step is computed using the value at self.local_elapsed_time.
+            # However, since the child grid's boundary condition is updated at the start of each computation step,
+            # it corresponds to the (interpolated) value at self.time_interp - self.local_elapsed_time seconds.
+            # As a result, the boundary values of the parent and child grids at the end of the computation may not match.
+            # If self.time_interp - self.local_elapsed_time is very close to dt, the child grid is computed using
+            # the parent grid's result at self.time_interp, so the parent grid's values and the child grid's
+            # boundary values will match.
             if (self.one_way_nesting is True) and (self.parent_grid is False) and (self.child_grid is True):
                 idx = np.argmin(np.abs(self.time_interp-self.local_elapsed_time))
                 num_nonzero = np.count_nonzero(self.h_node_child_grid_condition[idx, :])
@@ -1204,52 +1211,39 @@ class TurbidityCurrent2D(Component):
                         if self.model == '4eq':
                             self.Kh_node[:] = self.Kh_node_child_grid_condition[idx, :]
                         self.first_nesting = False
+
+                        # initial external data (interpolated data from parent grid)
+                        self.h_node_external = self.h.copy()
+                        self.u_node_external = self.u_node.copy()
+                        self.v_node_external = self.v_node.copy()
+                        self.C_i_node_external = self.C_i.copy()
+                        self.bed_thick_i_external = self.bed_thick_i.copy()
+                        if self.model == '4eq':
+                            self.Kh_node_external = self.Kh_node.copy()
+
+                        one_way_nesting_method.flow_relaxation_scheme()
                     
                 elif self.first_nesting is False and num_nonzero > 0:
-                    # 境界のみを更新する
-                    self.h[self.grid.nodes_at_top_edge] = self.h_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
-                    self.h[self.grid.nodes_at_left_edge] = self.h_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
-                    self.h[self.grid.nodes_at_right_edge] = self.h_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
-                    self.h[self.grid.nodes_at_bottom_edge] = self.h_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
-
-                    self.u_node[self.grid.nodes_at_top_edge] = self.u_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
-                    self.u_node[self.grid.nodes_at_left_edge] = self.u_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
-                    self.u_node[self.grid.nodes_at_right_edge] = self.u_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
-                    self.u_node[self.grid.nodes_at_bottom_edge] = self.u_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
-
-                    self.v_node[self.grid.nodes_at_top_edge] = self.v_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
-                    self.v_node[self.grid.nodes_at_left_edge] = self.v_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
-                    self.v_node[self.grid.nodes_at_right_edge] = self.v_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
-                    self.v_node[self.grid.nodes_at_bottom_edge] = self.v_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
-                    # NOTE: When vectorization is performed using advanced indexing, the indexed axis is moved to the first (0-th) dimension, changing the shape of the array. 
-                    # Therefore, a for-loop is used instead.
+                    # external data (interpolated data from parent grid)
+                    self.h_node_external = self.h_node_child_grid_condition[idx, :]
+                    self.u_node_external = self.u_node_child_grid_condition[idx, :]
+                    self.v_node_external = self.v_node_child_grid_condition[idx, :]
                     for j in range(self.number_gclass):
-                        self.C_i[j, self.grid.nodes_at_top_edge] = self.C_i_node_child_grid_condition[idx, j, self.grid.nodes_at_top_edge]
-                        self.C_i[j, self.grid.nodes_at_left_edge] = self.C_i_node_child_grid_condition[idx, j, self.grid.nodes_at_left_edge]
-                        self.C_i[j, self.grid.nodes_at_right_edge] = self.C_i_node_child_grid_condition[idx, j, self.grid.nodes_at_right_edge]
-                        self.C_i[j, self.grid.nodes_at_bottom_edge] = self.C_i_node_child_grid_condition[idx, j, self.grid.nodes_at_bottom_edge]
-                        self.Ch_i[j, :] = self.C_i[j, :] * self.h
-                        self.bed_thick_i[j, self.grid.nodes_at_top_edge] = self.bed_thick_i_node_child_grid_condition[idx, j, self.grid.nodes_at_top_edge]
-                        self.bed_thick_i[j, self.grid.nodes_at_left_edge] = self.bed_thick_i_node_child_grid_condition[idx, j, self.grid.nodes_at_left_edge]
-                        self.bed_thick_i[j, self.grid.nodes_at_right_edge] = self.bed_thick_i_node_child_grid_condition[idx, j, self.grid.nodes_at_right_edge]
-                        self.bed_thick_i[j, self.grid.nodes_at_bottom_edge] = self.bed_thick_i_node_child_grid_condition[idx, j, self.grid.nodes_at_bottom_edge] 
-
-                    self.C[:] = np.sum(self.C_i, axis=0)
-                    self.Ch[:] = np.sum(self.Ch_i, axis=0)
-                    self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
-                    # self.bed_thick[self.grid.nodes_at_top_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
-                    # self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
-                    # self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
-                    # self.bed_thick[self.grid.nodes_at_bottom_edge] = self.bed_thick_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
-
+                        self.C_i_node_external[j, :] = self.C_i_node_child_grid_condition[idx, j, :]
+                        self.bed_thick_i_external[j, :] = self.bed_thick_i_node_child_grid_condition[idx, j, :]
                     if self.model == '4eq':
-                        self.Kh_node[self.grid.nodes_at_top_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_top_edge]
-                        self.Kh_node[self.grid.nodes_at_left_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_left_edge]
-                        self.Kh_node[self.grid.nodes_at_right_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_right_edge]
-                        self.Kh_node[self.grid.nodes_at_bottom_edge] = self.Kh_node_child_grid_condition[idx, self.grid.nodes_at_bottom_edge]
+                        self.Kh_node_external = self.Kh_node_child_grid_condition[idx, :]
 
-                if one_way_nesting_method is not None:
-                    one_way_nesting_method.flow_relaxation_scheme()
+                    if one_way_nesting_method.num_relaxation_grid == 0:
+                        one_way_nesting_method.update_boundary_conditions(self, idx)
+                    elif one_way_nesting_method.num_relaxation_grid > 0:
+                        one_way_nesting_method.flow_relaxation_scheme()
+                    else:
+                        raise ValueError("num_relaxation_grid must be a non-negative integer.")
+
+                # if one_way_nesting_method is not None:
+                #     one_way_nesting_method.flow_relaxation_scheme()
+
                                     
             elif (self.two_way_nesting is True) and (self.parent_grid is False) and (self.child_grid is True):
                 print('two_way_nesting is True')
