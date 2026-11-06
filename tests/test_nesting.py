@@ -423,6 +423,153 @@ class TestTwoWayNestingBoundaryUpdate:
         np.testing.assert_allclose(result["Ch_i"][:, ~interior][1], 2.0 * 0.02)
 
 
+class TestBoundaryKh:
+    """Kh at the boundary links of a child grid must be given by the parent grid."""
+
+    def test_child_boundary_links_use_Kh_node(self, tmp_path):
+        parent, child, nesting = make_nesting(tmp_path)
+        parent.run_one_step(dt=DT, repeat=0, last=1)
+        nesting.compute_child_grid_condition_from_parent_grid(time_step=DT / 10)
+        child.run_one_step(dt=DT, repeat=0, last=1, one_way_nesting_method=nesting)
+        child.Kh_node[:] = 2.0
+        child.Kh[:] = 1.0
+
+        child.update_boundary_conditions(Kh=child.Kh)
+
+        # The links next to the corners are also edge links. As for the velocities,
+        # the value for the edge links takes priority at those links.
+        bound_links = np.setdiff1d(child.fixed_value_links, child.fixed_value_edge_links)
+        assert bound_links.size > 0
+        np.testing.assert_allclose(child.Kh[bound_links], 2.0 / 3.0 * 2.0 + 1.0 / 3.0 * 1.0)
+        np.testing.assert_allclose(child.Kh[child.fixed_value_edge_links], 2.0)
+
+    def test_parent_boundary_links_are_unchanged(self, tmp_path):
+        parent = make_parent(tmp_path)
+        parent.run_one_step(dt=DT, repeat=0, last=1)
+        parent.Kh_node[:] = 2.0
+        parent.Kh[:] = 1.0
+
+        parent.update_boundary_conditions(Kh=parent.Kh)
+
+        np.testing.assert_array_equal(parent.Kh[parent.fixed_value_links], 1.0)
+
+
+class TestFlowRelaxationSchemeAtLinks:
+    """The FRS must relax u, v and Kh at links, where they are solved."""
+
+    NUM_RELAXATION_GRID = 3
+
+    def relax(self, tmp_path, num_relaxation_grid):
+        """Apply the FRS with uniform external and internal link values."""
+        _, child, nesting = make_nesting(
+            tmp_path, num_relaxation_grid=num_relaxation_grid
+        )
+        n = child.grid.number_of_nodes
+        set_child_external_values(child, np.full(n, 2.0), np.zeros((GSIZE, n)))
+        child.h[:] = 2.0
+        child.Ch_i[:, :] = 0.0
+        child.u[:] = 3.0
+        child.v[:] = 4.0
+        child.Kh[:] = 5.0
+        nesting.flow_relaxation_scheme()
+        node_distance = index_distance_to_edge(child)
+        link_distance = np.mean(node_distance[child.grid.nodes_at_link], axis=1)
+        return child, link_distance
+
+    def test_zone_links_are_blended(self, tmp_path):
+        child, distance = self.relax(tmp_path, self.NUM_RELAXATION_GRID)
+        zone = distance < self.NUM_RELAXATION_GRID
+        alpha = 1.0 - np.tanh(distance[zone] / 2.0)
+        np.testing.assert_allclose(child.u[zone], alpha * 0.5 + (1 - alpha) * 3.0)
+        np.testing.assert_allclose(child.v[zone], alpha * -1.0 + (1 - alpha) * 4.0)
+        np.testing.assert_allclose(child.Kh[zone], alpha * 0.1 + (1 - alpha) * 5.0)
+
+    def test_links_on_edges_equal_external_value(self, tmp_path):
+        child, distance = self.relax(tmp_path, self.NUM_RELAXATION_GRID)
+        edge = distance == 0
+        assert np.count_nonzero(edge) > 0
+        np.testing.assert_allclose(child.v[edge], -1.0)
+
+    def test_interior_links_are_kept(self, tmp_path):
+        child, distance = self.relax(tmp_path, self.NUM_RELAXATION_GRID)
+        interior = distance >= self.NUM_RELAXATION_GRID
+        assert np.count_nonzero(interior) > 0
+        np.testing.assert_array_equal(child.u[interior], 3.0)
+        np.testing.assert_array_equal(child.v[interior], 4.0)
+        np.testing.assert_array_equal(child.Kh[interior], 5.0)
+
+    def test_no_link_changes_without_relaxation_zone(self, tmp_path):
+        child, _ = self.relax(tmp_path, 0)
+        np.testing.assert_array_equal(child.u, 3.0)
+        np.testing.assert_array_equal(child.v, 4.0)
+        np.testing.assert_array_equal(child.Kh, 5.0)
+
+
+class TestFirstNestingLinks:
+    """The links of a child grid must be initialized at the first nesting."""
+
+    class Stop(Exception):
+        """Raised to leave run_one_step() after the initialization."""
+
+    def run_until_nesting(self, child, **kwargs):
+        """Return (u, v, Kh) at the links just after the first nesting."""
+        child.grid.at_node["flow__depth"][:] = 5.0
+        for j in range(GSIZE):
+            child.grid.at_node["flow__sediment_concentration_{}".format(j)][:] = 0.01
+        child.grid.at_link["flow__vertical_velocity"][:] = -3.0
+
+        original = child.copy_values_to_temp
+        result = {}
+
+        def spy():
+            original()
+            result["count"] = result.get("count", 0) + 1
+            if result["count"] == 2:
+                result["values"] = (child.u.copy(), child.v.copy(), child.Kh.copy())
+                raise self.Stop
+
+        child.copy_values_to_temp = spy
+        with pytest.raises(self.Stop):
+            child.run_one_step(dt=DT, repeat=0, last=1, **kwargs)
+        return result["values"]
+
+    def test_one_way(self, tmp_path):
+        _, child, nesting = make_nesting(tmp_path)
+        set_child_conditions(child)
+        child.time_interp = np.array([0.0])
+
+        u, v, Kh = self.run_until_nesting(child, one_way_nesting_method=nesting)
+
+        assert child.first_nesting is False
+        np.testing.assert_allclose(u, 0.5)
+        np.testing.assert_allclose(v, -1.0)
+        np.testing.assert_allclose(Kh, 0.1)
+
+    def test_two_way(self, tmp_path):
+        child = make_child(
+            tmp_path,
+            [500.0, 1500.0, 1500.0, 3500.0],
+            y_top=4000.0,
+            one_way=False,
+            two_way=True,
+        )
+        n = child.grid.number_of_nodes
+        child.first_nesting = True
+        child.h_node_child_grid_condition = np.full(n, 2.0)
+        child.u_node_child_grid_condition = np.full(n, 0.5)
+        child.v_node_child_grid_condition = np.full(n, -1.0)
+        child.Kh_node_child_grid_condition = np.full(n, 0.1)
+        child.bed_thick_node_child_grid_condition = np.zeros(n)
+        child.bed_thick_i_node_child_grid_condition = np.zeros((GSIZE, n))
+        child.C_i_node_child_grid_condition = np.full((GSIZE, n), 0.01)
+
+        u, v, Kh = self.run_until_nesting(child)
+
+        np.testing.assert_allclose(u, 0.5)
+        np.testing.assert_allclose(v, -1.0)
+        np.testing.assert_allclose(Kh, 0.1)
+
+
 @pytest.mark.parametrize("num_relaxation_grid", [0, 3])
 def test_child_sediment_follows_parent(tmp_path, num_relaxation_grid):
     """All the fixes together: the total of Ch in a child grid follows that in
