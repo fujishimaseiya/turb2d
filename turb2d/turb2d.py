@@ -1291,7 +1291,10 @@ class TurbidityCurrent2D(Component):
                         self.C_i[j, self.grid.nodes_at_left_edge] = self.C_i_node_child_grid_condition[j, self.grid.nodes_at_left_edge]
                         self.C_i[j, self.grid.nodes_at_right_edge] = self.C_i_node_child_grid_condition[j, self.grid.nodes_at_right_edge]
                         self.C_i[j, self.grid.nodes_at_bottom_edge] = self.C_i_node_child_grid_condition[j, self.grid.nodes_at_bottom_edge]
-                        self.Ch_i[j, :] = self.C_i[j, :] * self.h
+                        # NOTE: C_i at the interior nodes is outdated here, so Ch_i is updated at the boundary nodes only.
+                        for boundary in (self.grid.nodes_at_top_edge, self.grid.nodes_at_left_edge,
+                                         self.grid.nodes_at_right_edge, self.grid.nodes_at_bottom_edge):
+                            self.Ch_i[j, boundary] = self.C_i[j, boundary] * self.h[boundary]
                         self.bed_thick_i[j, self.grid.nodes_at_top_edge] = self.bed_thick_i_node_child_grid_condition[j, self.grid.nodes_at_top_edge]
                         self.bed_thick_i[j, self.grid.nodes_at_left_edge] = self.bed_thick_i_node_child_grid_condition[j, self.grid.nodes_at_left_edge]
                         self.bed_thick_i[j, self.grid.nodes_at_right_edge] = self.bed_thick_i_node_child_grid_condition[j, self.grid.nodes_at_right_edge]

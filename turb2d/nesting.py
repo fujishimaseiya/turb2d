@@ -130,11 +130,12 @@ class OneWayNesting():
             for j in range(tc_child.number_gclass):
                 tc_child.C_i[j, boundary] = self.tc_child.C_i_node_child_grid_condition[idx, j, boundary]
                 tc_child.bed_thick_i[j, boundary] = self.tc_child.bed_thick_i_node_child_grid_condition[idx, j, boundary]
+                # NOTE: Ch_i must be updated at the boundary nodes only. C_i at the interior nodes
+                # is not updated until the end of run_one_step(), so C_i * h would discard the
+                # interior Ch_i computed in the previous local time steps.
+                tc_child.Ch_i[j, boundary] = tc_child.C_i[j, boundary] * tc_child.h[boundary]
             if tc_child.model == '4eq':
                 tc_child.Kh_node[boundary] = self.tc_child.Kh_node_child_grid_condition[idx, boundary]
-
-        for j in range(tc_child.number_gclass):
-            tc_child.Ch_i[j, :] = tc_child.C_i[j, :] * tc_child.h
 
         tc_child.C[:] = np.sum(tc_child.C_i, axis=0)
         tc_child.Ch[:] = np.sum(tc_child.Ch_i, axis=0)
@@ -412,7 +413,10 @@ class OneWayNesting():
         u_node_child = self.tc_child.u_node.copy()
         v_node_child = self.tc_child.v_node.copy()
         h_node_child = self.tc_child.h.copy()
-        C_i_node_child = self.tc_child.C_i.copy()
+        # NOTE: Ch_i is relaxed instead of C_i, because Ch_i is the prognostic variable of the model.
+        # C_i at the interior nodes is not updated until the end of run_one_step().
+        Ch_i_node_child = self.tc_child.Ch_i.copy()
+        Ch_i_node_external = self.tc_child.C_i_node_external * self.tc_child.h_node_external
         bed_thick_i_node_child = self.tc_child.bed_thick_i.copy()
         if self.tc_child.model == '4eq':
             Kh_node_child = self.tc_child.Kh_node.copy()
@@ -420,7 +424,7 @@ class OneWayNesting():
         u_node_relax = np.zeros_like(u_node_child)
         v_node_relax = np.zeros_like(v_node_child)
         h_node_relax = np.zeros_like(h_node_child)
-        C_i_node_relax = np.zeros_like(C_i_node_child)
+        Ch_i_node_relax = np.zeros_like(Ch_i_node_child)
         bed_thick_i_node_relax = np.zeros_like(bed_thick_i_node_child)
         if self.tc_child.model == '4eq':
             Kh_node_relax = np.zeros_like(Kh_node_child)
@@ -436,9 +440,9 @@ class OneWayNesting():
                                                                internal_values=h_node_child)
         # bed_thick_node_relax[:, :] = self.apply_flow_relaxation_scheme(bed_thick_node_relax,
         #                                                   end_internal_region_x)
-        for i in range(self.tc_child.C_i.shape[0]):
-            C_i_node_relax[i, :] = self.apply_flow_relaxation_scheme(external_values=self.tc_child.C_i_node_external[i, :],
-                                                                        internal_values=C_i_node_child[i, :])
+        for i in range(self.tc_child.Ch_i.shape[0]):
+            Ch_i_node_relax[i, :] = self.apply_flow_relaxation_scheme(external_values=Ch_i_node_external[i, :],
+                                                                        internal_values=Ch_i_node_child[i, :])
             bed_thick_i_node_relax[i, :] = self.apply_flow_relaxation_scheme(external_values=self.tc_child.bed_thick_i_external[i, :],
                                                                                 internal_values=bed_thick_i_node_child[i, :])
                                                                                 
@@ -457,7 +461,13 @@ class OneWayNesting():
         self.tc_child.u_node[mask_frs_zone] = u_node_relax.flatten()[mask_frs_zone]
         self.tc_child.v_node[mask_frs_zone] = v_node_relax.flatten()[mask_frs_zone]
         self.tc_child.h[mask_frs_zone] = h_node_relax.flatten()[mask_frs_zone]
-        self.tc_child.C_i[:, mask_frs_zone] = C_i_node_relax.reshape(self.tc_child.C_i.shape[0], -1)[:, mask_frs_zone]
+        self.tc_child.Ch_i[:, mask_frs_zone] = Ch_i_node_relax[:, mask_frs_zone]
+        self.tc_child.Ch[:] = np.sum(self.tc_child.Ch_i, axis=0)
+        # C_i in the FRS zone is derived from the relaxed values in the same way as copy_values_to_grid()
+        zone_nodes = np.where(mask_frs_zone)[0]
+        wet_zone_nodes = zone_nodes[self.tc_child.h[zone_nodes] > self.tc_child.h_w]
+        self.tc_child.C_i[:, zone_nodes] = self.tc_child.C_init
+        self.tc_child.C_i[:, wet_zone_nodes] = self.tc_child.Ch_i[:, wet_zone_nodes] / self.tc_child.h[wet_zone_nodes]
         self.tc_child.C[:] = np.sum(self.tc_child.C_i, axis=0)
         self.tc_child.bed_thick_i[:, mask_frs_zone] = bed_thick_i_node_relax.reshape(self.tc_child.bed_thick_i.shape[0], -1)[:, mask_frs_zone]
         self.tc_child.bed_thick[:] = np.sum(self.tc_child.bed_thick_i, axis=0)

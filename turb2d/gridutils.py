@@ -136,8 +136,11 @@ def map_values(
     """map parameters at nodes to links, and those at links to nodes
     """
     # check if we need to map values from nodes to links for nesting calculation
+    # NOTE: This is required only for a child grid, whose node values are given by the parent grid.
+    # In a parent grid, this mapping would smooth the link values and change the solution.
     nesting = (tc.one_way_nesting or tc.two_way_nesting)
-    if Kh_node is not None and nesting is True:
+    is_child_grid = (nesting is True and tc.parent_grid is False and tc.child_grid is True)
+    if Kh_node is not None and is_child_grid:
         map_nodes_to_links(
         tc,
         Kh_node=Kh_node,
