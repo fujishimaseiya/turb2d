@@ -1210,6 +1210,7 @@ class TurbidityCurrent2D(Component):
                         self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
                         if self.model == '4eq':
                             self.Kh_node[:] = self.Kh_node_child_grid_condition[idx, :]
+                        self.map_node_values_to_all_links()
                         self.first_nesting = False
 
                         # initial external data (interpolated data from parent grid)
@@ -1266,6 +1267,7 @@ class TurbidityCurrent2D(Component):
                     self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[:, :]
                     if self.model == '4eq':
                         self.Kh_node[:] = self.Kh_node_child_grid_condition[:]
+                    self.map_node_values_to_all_links()
                     self.first_nesting = False
                     
                 elif self.first_nesting is False and num_nonzero > 0:
@@ -2946,6 +2948,18 @@ class TurbidityCurrent2D(Component):
         # import ipdb
         # ipdb.set_trace()
 
+    def map_node_values_to_all_links(self):
+        """Set u, v and Kh at all links from the node values given by a parent grid.
+
+           This is used when a child grid is initialized. u, v and Kh are solved
+           at links, so their node values alone do not affect the calculation.
+        """
+        nodes_at_link = self.grid.nodes_at_link
+        self.u[:] = np.mean(self.u_node[nodes_at_link], axis=1)
+        self.v[:] = np.mean(self.v_node[nodes_at_link], axis=1)
+        if self.model == "4eq":
+            self.Kh[:] = np.mean(self.Kh_node[nodes_at_link], axis=1)
+
     def copy_values_to_temp(self):
         self.h_temp[:] = self.h[:]
         self.dhdx_temp[:] = self.dhdx[:]
@@ -3319,7 +3333,16 @@ class TurbidityCurrent2D(Component):
             Kh[self.fixed_grad_links] = Kh[self.fixed_grad_anchor_links]
             # Kh[self.fixed_grad_link_at_north[Kh[self.fixed_grad_link_at_north] < 0]] = 0
             # Kh[self.fixed_grad_link_at_south[Kh[self.fixed_grad_link_at_south] > 0]] = 0
-            Kh[self.fixed_value_links] = Kh[self.fixed_value_anchor_links]
+            nesting = (self.one_way_nesting or self.two_way_nesting)
+            if nesting is True and self.parent_grid is False and self.child_grid is True:
+                # Kh_node at the boundary nodes of a child grid is given by the parent grid
+                Kh[self.fixed_value_links] = (2.0 / 3.0) * self.Kh_node[self.fixed_value_nodes] + (
+                    1.0 / 3.0
+                ) * Kh[self.fixed_value_anchor_links]
+                Kh[self.fixed_value_edge_links] = np.mean(
+                    self.Kh_node[edge_nodes], axis=1)
+            else:
+                Kh[self.fixed_value_links] = Kh[self.fixed_value_anchor_links]
 
         if h_link is not None:
             h_link[self.fixed_grad_links] = h_link[self.fixed_grad_anchor_links]

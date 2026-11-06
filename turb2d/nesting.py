@@ -400,13 +400,7 @@ class OneWayNesting():
         num_grid_EW = self.tc_child.grid.shape[1]
 
         # calculate the relaxation parameters if not already calculated
-        has_var = (
-                    hasattr(self, 'relax_param_N_to_S') 
-                    and hasattr(self, 'relax_param_S_to_N') 
-                    and hasattr(self, 'relax_param_E_to_W') 
-                    and hasattr(self, 'relax_param_W_to_E')
-                    )
-        if has_var is False:
+        if not hasattr(self, 'relax_param'):
             self.calc_relax_param()
 
         # initialize the variables for the flow relaxation scheme
@@ -473,6 +467,30 @@ class OneWayNesting():
         self.tc_child.bed_thick[:] = np.sum(self.tc_child.bed_thick_i, axis=0)
         if self.tc_child.model == '4eq':
             self.tc_child.Kh_node[mask_frs_zone] = Kh_node_relax.flatten()[mask_frs_zone]
+
+        # NOTE: u, v and Kh are solved at links, and the node values are computed from the link values.
+        # Therefore, the link values must be relaxed for the parent grid to affect these variables.
+        self.relax_link_values(self.tc_child.u, self.tc_child.u_node_external)
+        self.relax_link_values(self.tc_child.v, self.tc_child.v_node_external)
+        if self.tc_child.model == '4eq':
+            self.relax_link_values(self.tc_child.Kh, self.tc_child.Kh_node_external)
+
+    def relax_link_values(self, link_values, external_node_values):
+        """Relax the link values in the FRS zone toward the values of the parent grid.
+
+        Parameters
+        ----------
+        link_values : np.ndarray
+            values at the links of the child grid. This array is updated in place.
+
+        external_node_values : np.ndarray
+            values interpolated from the parent grid to the nodes of the child grid.
+        """
+        zone = self.mask_frs_zone_link
+        nodes_at_zone_link = self.tc_child.grid.nodes_at_link[zone]
+        external_link_values = np.mean(external_node_values[nodes_at_zone_link], axis=1)
+        alpha = self.relax_param_link[zone]
+        link_values[zone] = alpha * external_link_values + (1 - alpha) * link_values[zone]
 
 
     # def calc_relaxed_values(self, 
@@ -910,6 +928,12 @@ class OneWayNesting():
 
         # flatten the array for external_values in `apply_flow_relaxation_scheme`
         self.relax_param = relax_param.flatten()
+
+        # relaxation parameters at links, based on the distance of the midpoint of each link
+        node_distance = self.min_index_distance_to_external_boundary.flatten()
+        link_distance = np.mean(node_distance[self.tc_child.grid.nodes_at_link], axis=1)
+        self.relax_param_link = 1 - np.tanh(link_distance/2)
+        self.mask_frs_zone_link = link_distance < self.num_relaxation_grid
 
 
 class TwoWayNesting(OneWayNesting):
