@@ -2893,7 +2893,7 @@ class TurbidityCurrent2D(Component):
         # Calculate bed elevation change
         out_eta[nodes] = (
             eta[nodes] + np.sum(self.bed_change_i[:, nodes],
-                                axis=0) / self.lambda_p
+                                axis=0) / (1 - self.lambda_p)
         )
 
         self.es_i[:, nodes] = self.es[:, nodes]
