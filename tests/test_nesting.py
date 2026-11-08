@@ -186,6 +186,7 @@ def set_child_conditions(child, h=2.0):
     child.v_node_child_grid_condition = np.full((1, n), -1.0)
     child.Kh_node_child_grid_condition = np.full((1, n), 0.1)
     child.bed_thick_i_node_child_grid_condition = np.zeros((1, GSIZE, n))
+    child.bed_thick_node_child_grid_condition = np.zeros((1, n))
     child.C_i_node_child_grid_condition = np.zeros((1, GSIZE, n))
     for j in range(GSIZE):
         child.C_i_node_child_grid_condition[0, j, :] = 0.01 * (j + 1)
@@ -200,6 +201,7 @@ def set_child_external_values(child, h, C_i):
     child.Kh_node_external = np.full(n, 0.1)
     child.C_i_node_external = C_i
     child.bed_thick_i_external = np.zeros((GSIZE, n))
+    child.eta_external = child.eta_init.copy()
 
 
 class TestUpdateBoundaryConditions:
@@ -568,6 +570,96 @@ class TestFirstNestingLinks:
         np.testing.assert_allclose(u, 0.5)
         np.testing.assert_allclose(v, -1.0)
         np.testing.assert_allclose(Kh, 0.1)
+
+
+class TestBedElevation:
+    """The bed elevation of a child grid must follow the parent grid."""
+
+    BED_CHANGE = 0.3
+
+    def test_boundary_gets_change_of_parent_bed(self, tmp_path):
+        _, child, nesting = make_nesting(tmp_path)
+        set_child_conditions(child)
+        child.bed_thick_node_child_grid_condition[:] = self.BED_CHANGE
+        eta_before = child.eta.copy()
+
+        nesting.update_boundary_conditions(child, 0)
+
+        perimeter = perimeter_mask(child)
+        np.testing.assert_allclose(
+            child.eta[perimeter], child.eta_init[perimeter] + self.BED_CHANGE
+        )
+        np.testing.assert_array_equal(child.eta[~perimeter], eta_before[~perimeter])
+
+    def test_frs_relaxes_eta(self, tmp_path):
+        num_relaxation_grid = 3
+        _, child, nesting = make_nesting(
+            tmp_path, num_relaxation_grid=num_relaxation_grid
+        )
+        n = child.grid.number_of_nodes
+        set_child_external_values(
+            child, np.full(n, 2.0), np.full((GSIZE, n), 0.01)
+        )
+        child.eta_external = child.eta_init + self.BED_CHANGE
+
+        nesting.flow_relaxation_scheme()
+
+        distance = index_distance_to_edge(child)
+        change = child.eta - child.eta_init
+        np.testing.assert_allclose(change[distance == 0], self.BED_CHANGE)
+        blended = (distance > 0) & (distance < num_relaxation_grid)
+        assert np.all(change[blended] > 0.0)
+        assert np.all(change[blended] < self.BED_CHANGE)
+        np.testing.assert_array_equal(change[distance >= num_relaxation_grid], 0.0)
+
+    def test_boundary_update_keeps_eta_of_parent(self, tmp_path):
+        _, child, _ = make_nesting(tmp_path)
+        gridutils.set_up_neighbor_arrays(child)
+        child.eta_external = child.eta_init + self.BED_CHANGE
+
+        child.update_boundary_conditions(eta=child.eta)
+
+        perimeter = perimeter_mask(child)
+        np.testing.assert_allclose(
+            child.eta[perimeter], child.eta_init[perimeter] + self.BED_CHANGE
+        )
+
+    def test_first_nesting_sets_eta_everywhere(self, tmp_path):
+        _, child, nesting = make_nesting(tmp_path)
+        set_child_conditions(child)
+        child.bed_thick_node_child_grid_condition[:] = self.BED_CHANGE
+        child.time_interp = np.array([0.0])
+
+        TestFirstNestingLinks().run_until_nesting(
+            child, one_way_nesting_method=nesting
+        )
+
+        np.testing.assert_allclose(child.eta - child.eta_init, self.BED_CHANGE)
+
+    @pytest.mark.parametrize("num_relaxation_grid", [0, 3])
+    def test_child_boundary_bed_follows_parent(self, tmp_path, num_relaxation_grid):
+        """At the end of a step, bed_thick at the edges of a child grid equals
+        the bed change of the parent grid.
+        """
+        parent, child, nesting = make_nesting(
+            tmp_path, num_relaxation_grid=num_relaxation_grid
+        )
+
+        for i in range(150):
+            parent.run_one_step(dt=DT, repeat=0, last=i + 1)
+            nesting.compute_child_grid_condition_from_parent_grid(time_step=DT / 100)
+            child.run_one_step(
+                dt=DT, repeat=0, last=i + 1, one_way_nesting_method=nesting
+            )
+
+        perimeter = perimeter_mask(child)
+        expected = child.bed_thick_node_child_grid_condition[-1, perimeter]
+        assert np.max(np.abs(expected)) > 0.0
+        np.testing.assert_allclose(
+            child.bed_thick[perimeter],
+            expected,
+            atol=0.02 * np.max(np.abs(expected)),
+        )
 
 
 @pytest.mark.parametrize("num_relaxation_grid", [0, 3])
