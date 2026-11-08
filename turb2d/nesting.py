@@ -136,6 +136,7 @@ class OneWayNesting():
                 tc_child.Ch_i[j, boundary] = tc_child.C_i[j, boundary] * tc_child.h[boundary]
             if tc_child.model == '4eq':
                 tc_child.Kh_node[boundary] = self.tc_child.Kh_node_child_grid_condition[idx, boundary]
+            tc_child.eta[boundary] = tc_child.eta_init[boundary] + self.tc_child.bed_thick_node_child_grid_condition[idx, boundary]
 
         tc_child.C[:] = np.sum(tc_child.C_i, axis=0)
         tc_child.Ch[:] = np.sum(tc_child.Ch_i, axis=0)
@@ -364,11 +365,12 @@ class OneWayNesting():
                                                                                       nested_idx=self.nested_region_idx[0],
                                                                                       spatial_interp_method='linear')
 
-        # self.tc_child.bed_thick_node_child_grid_condition[:, :] = self.interpolate_parent_to_child_grid(time_interp=self.tc_child.time_interp,
-        #                                                                                       variable_start=self.tc_parent.bed_thick_ini,
-        #                                                                                       variable_end=self.tc_parent.bed_thick,     
-        #                                                                                       nested_idx=self.nested_region_idx[0],
-        #                                                                                       spatial_interp_method='linear')
+        # NOTE: tc_parent.bed_thick_ini cannot be used here. It is the sum of bed_thick_i, whereas bed_thick is eta - eta_init.
+        self.tc_child.bed_thick_node_child_grid_condition[:, :] = self.interpolate_parent_to_child_grid(time_interp=self.tc_child.time_interp,
+                                                                                              variable_start=self.tc_parent.eta_ini - self.tc_parent.eta_init,
+                                                                                              variable_end=self.tc_parent.eta - self.tc_parent.eta_init,
+                                                                                              nested_idx=self.nested_region_idx[0],
+                                                                                              spatial_interp_method='linear')
 
         for i in range(gsize):
             self.tc_child.C_i_node_child_grid_condition[:, i, :] = self.interpolate_parent_to_child_grid(time_interp=self.tc_child.time_interp,
@@ -412,6 +414,7 @@ class OneWayNesting():
         Ch_i_node_child = self.tc_child.Ch_i.copy()
         Ch_i_node_external = self.tc_child.C_i_node_external * self.tc_child.h_node_external
         bed_thick_i_node_child = self.tc_child.bed_thick_i.copy()
+        eta_node_child = self.tc_child.eta.copy()
         if self.tc_child.model == '4eq':
             Kh_node_child = self.tc_child.Kh_node.copy()
 
@@ -434,6 +437,8 @@ class OneWayNesting():
                                                                internal_values=h_node_child)
         # bed_thick_node_relax[:, :] = self.apply_flow_relaxation_scheme(bed_thick_node_relax,
         #                                                   end_internal_region_x)
+        eta_node_relax = self.apply_flow_relaxation_scheme(external_values=self.tc_child.eta_external,
+                                                               internal_values=eta_node_child)
         for i in range(self.tc_child.Ch_i.shape[0]):
             Ch_i_node_relax[i, :] = self.apply_flow_relaxation_scheme(external_values=Ch_i_node_external[i, :],
                                                                         internal_values=Ch_i_node_child[i, :])
@@ -465,6 +470,7 @@ class OneWayNesting():
         self.tc_child.C[:] = np.sum(self.tc_child.C_i, axis=0)
         self.tc_child.bed_thick_i[:, mask_frs_zone] = bed_thick_i_node_relax.reshape(self.tc_child.bed_thick_i.shape[0], -1)[:, mask_frs_zone]
         self.tc_child.bed_thick[:] = np.sum(self.tc_child.bed_thick_i, axis=0)
+        self.tc_child.eta[mask_frs_zone] = eta_node_relax.flatten()[mask_frs_zone]
         if self.tc_child.model == '4eq':
             self.tc_child.Kh_node[mask_frs_zone] = Kh_node_relax.flatten()[mask_frs_zone]
 

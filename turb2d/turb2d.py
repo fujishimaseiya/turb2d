@@ -886,6 +886,8 @@ class TurbidityCurrent2D(Component):
         # topographic elevation and slope
         self.eta_temp = self.eta.copy()
         self.bed_thick_i_temp = self.bed_thick_i.copy()
+        # bed elevation given by a parent grid. None until the first nesting.
+        self.eta_external = None
         self.S = grid.calc_grad_at_link(self.eta)
         self.bed_change_i = np.empty_like(self.bed_thick_i)
         self.bedload_total = np.zeros_like(self.bed_thick_i)
@@ -1155,6 +1157,7 @@ class TurbidityCurrent2D(Component):
             self.C_i_ini = self.C_i.copy()
             self.bed_thick_i_ini = self.bed_thick_i.copy()
             self.bed_thick_ini = self.bed_thick.copy()
+            self.eta_ini = self.eta.copy()
             if self.model == '4eq':
                 self.Kh_node_ini = self.Kh_node.copy()
 
@@ -1208,6 +1211,10 @@ class TurbidityCurrent2D(Component):
                         # self.bed_thick[:] = self.bed_thick_node_child_grid_condition[idx, :]
                         self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[idx, :, :]
                         self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
+                        # NOTE: The change of the bed elevation is given instead of the elevation itself,
+                        # because the initial topography can differ between the parent and child grids.
+                        self.eta_external = self.eta_init + self.bed_thick_node_child_grid_condition[idx, :]
+                        self.eta[:] = self.eta_external
                         if self.model == '4eq':
                             self.Kh_node[:] = self.Kh_node_child_grid_condition[idx, :]
                         self.map_node_values_to_all_links()
@@ -1229,6 +1236,7 @@ class TurbidityCurrent2D(Component):
                     self.h_node_external = self.h_node_child_grid_condition[idx, :]
                     self.u_node_external = self.u_node_child_grid_condition[idx, :]
                     self.v_node_external = self.v_node_child_grid_condition[idx, :]
+                    self.eta_external = self.eta_init + self.bed_thick_node_child_grid_condition[idx, :]
                     for j in range(self.number_gclass):
                         self.C_i_node_external[j, :] = self.C_i_node_child_grid_condition[idx, j, :]
                         self.bed_thick_i_external[j, :] = self.bed_thick_i_node_child_grid_condition[idx, j, :]
@@ -1265,6 +1273,8 @@ class TurbidityCurrent2D(Component):
                     self.Ch[:] = np.sum(self.Ch_i, axis=0)
                     self.bed_thick[:] = self.bed_thick_node_child_grid_condition[:]
                     self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[:, :]
+                    self.eta_external = self.eta_init + self.bed_thick_node_child_grid_condition[:]
+                    self.eta[:] = self.eta_external
                     if self.model == '4eq':
                         self.Kh_node[:] = self.Kh_node_child_grid_condition[:]
                     self.map_node_values_to_all_links()
@@ -1308,6 +1318,8 @@ class TurbidityCurrent2D(Component):
                     self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_left_edge]
                     self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_right_edge]
                     self.bed_thick[self.grid.nodes_at_bottom_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_bottom_edge]
+                    self.eta_external = self.eta_init + self.bed_thick_node_child_grid_condition[:]
+                    self.eta[self.grid.perimeter_nodes] = self.eta_external[self.grid.perimeter_nodes]
 
                     if self.model == '4eq':
                         self.Kh_node[self.grid.nodes_at_top_edge] = self.Kh_node_child_grid_condition[self.grid.nodes_at_top_edge]
@@ -3398,6 +3410,9 @@ class TurbidityCurrent2D(Component):
                 self.eta_init[self.fixed_value_nodes]
                 - self.eta_init[self.fixed_value_anchor_nodes]
             )
+            # The bed elevation at the edges of a child grid is given by the parent grid.
+            if self.eta_external is not None:
+                eta[self.grid.perimeter_nodes] = self.eta_external[self.grid.perimeter_nodes]
         
         # if bed_thick_i is not None:
         #     for i in range(bed_thick_i.shape[0]):
