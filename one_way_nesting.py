@@ -64,7 +64,6 @@ ax.set_ylabel('Distance from inlet [m]')
 plt.savefig('nested_region.png')
 
 # start calculation
-# In this calculation, only the calculation results of the child grid is saved.
 t = time.time()
 tc_parent.save_nc('tc{:04d}_parent.nc'.format(0))
 tc_child.save_nc('tc{:04d}_child.nc'.format(0))
@@ -89,5 +88,6 @@ for j in range(num_repeat):
         if i % save_interval == 0:
             tc_child.save_nc('tc{:04d}_child.nc'.format(num))
         num = num + 1
-    tc_child.save_grid('tc{:04d}_child.nc'.format(num-2))
+    tc_parent.save_grid('tc{:04d}_parent'.format(num - 1))
+    tc_child.save_grid('tc{:04d}_child'.format(num - 1))
 print('elapsed time: {} sec.'.format(time.time() - t))

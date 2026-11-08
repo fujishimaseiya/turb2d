@@ -55,6 +55,6 @@ for j in range(1):
         if np.sum(tc.C * tc.h) / Ch_init < 0.01:
             break
         num = num + 1
-    tc.save_grid('tc{:04d}.nc'.format(num))
+    tc.save_grid('tc{:04d}'.format(num - 1))
 print('elapsed time: {} sec.'.format(time.time() - t))
 
