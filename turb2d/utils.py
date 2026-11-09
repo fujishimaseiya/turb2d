@@ -220,6 +220,7 @@ def create_child_topography(
     if xmin % parent_grid_spacing != 0:
         xmin = round(float(xmin) / float(parent_grid_spacing)) * parent_grid_spacing
         xmin = Decimal(str(xmin))
+    check_nested_region_in_parent(parent_grid, xmin, xmax, ymin, ymax)
 
     length = (ymax - ymin)
     width = (xmax - xmin)
@@ -409,6 +410,7 @@ def create_nested_grid(config_file_parent=None,
         xmax = round(float(xmax) / float(parent_grid_spacing)) * parent_grid_spacing
     if xmin % parent_grid_spacing != 0:
         xmin = round(float(xmin) / float(parent_grid_spacing)) * parent_grid_spacing
+    check_nested_region_in_parent(parent_grid, xmin, xmax, ymin, ymax)
 
     ymax = Decimal(str(ymax))
     ymin = Decimal(str(ymin))
@@ -1007,6 +1009,46 @@ def set_boundary_condition(grid, config_file=None, top_edge_bc=None, bottom_edge
             "right_edge_bc must be one of 'fixed_value', 'fixed_gradient', 'looped_boundary', 'closed_boundary'."
         )
     
+def check_nested_region_in_parent(parent_grid, xmin, xmax, ymin, ymax):
+    """Raise an error if a nested region is not inside a parent grid.
+
+       Parameters
+       ----------------------
+       parent_grid: RasterModelGrid
+          a landlab grid object of the parent grid
+
+       xmin, xmax, ymin, ymax: float
+          range of the nested region
+
+       Raises
+       ----------------------
+       ValueError
+          If any part of the nested region is outside the parent grid.
+    """
+    parent_xmin = parent_grid.x_of_node.min()
+    parent_xmax = parent_grid.x_of_node.max()
+    parent_ymin = parent_grid.y_of_node.min()
+    parent_ymax = parent_grid.y_of_node.max()
+
+    # The tolerance absorbs the floating point error of the node coordinates.
+    tolerance = 1.0e-6 * parent_grid.dx
+    if (
+        float(xmin) < parent_xmin - tolerance
+        or float(xmax) > parent_xmax + tolerance
+        or float(ymin) < parent_ymin - tolerance
+        or float(ymax) > parent_ymax + tolerance
+    ):
+        raise ValueError(
+            "The child grid must be inside the parent grid. "
+            "Child grid: x = [{}, {}], y = [{}, {}]. "
+            "Parent grid: x = [{}, {}], y = [{}, {}].".format(
+                float(xmin), float(xmax), float(ymin), float(ymax),
+                float(parent_xmin), float(parent_xmax),
+                float(parent_ymin), float(parent_ymax),
+            )
+        )
+
+
 def round_values(x, decimals=0):
     """Round a number to a specified number of decimal places.
     Parameters

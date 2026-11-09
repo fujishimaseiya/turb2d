@@ -8,6 +8,7 @@ from turb2d._links import top_edge_vertical_ids, bottom_edge_vertical_ids, left_
 from landlab import RasterModelGrid
 from scipy.interpolate import griddata, RegularGridInterpolator
 from .gridutils import map_mean_of_link_nodes_to_link
+from .utils import check_nested_region_in_parent
 from ._links import vertical_link_ids, horizontal_link_ids
 import time
 import sys
@@ -69,6 +70,7 @@ class OneWayNesting():
         xmax = self.tc_child.grid.x_of_node.max()
         ymin = self.tc_child.grid.y_of_node.min()
         ymax = self.tc_child.grid.y_of_node.max()
+        check_nested_region_in_parent(self.tc_parent.grid, xmin, xmax, ymin, ymax)
         # The extraction of regions by self.nested_region does not work well due to floating point precision.
         # Therefore, the coordinates of the parent grid are rounded to a specified number of decimal places.
         parent_node_x = self.round_values(self.tc_parent.grid.node_x, decimals=5)
