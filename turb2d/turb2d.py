@@ -1077,7 +1077,6 @@ class TurbidityCurrent2D(Component):
             self.flow_power[i, :] = self.grid["node"][
                 "flow_power_" + str(i)
             ]
-        self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
         self.u = self.grid["link"]["flow__horizontal_velocity"]
         self.v = self.grid["link"]["flow__vertical_velocity"]
         self.u_node = self.grid["node"]["flow__horizontal_velocity_at_node"]
@@ -1156,7 +1155,6 @@ class TurbidityCurrent2D(Component):
             self.v_node_ini = self.v_node.copy()
             self.C_i_ini = self.C_i.copy()
             self.bed_thick_i_ini = self.bed_thick_i.copy()
-            self.bed_thick_ini = self.bed_thick.copy()
             self.eta_ini = self.eta.copy()
             if self.model == '4eq':
                 self.Kh_node_ini = self.Kh_node.copy()
@@ -1210,7 +1208,6 @@ class TurbidityCurrent2D(Component):
                         self.Ch[:] = np.sum(self.Ch_i, axis=0)
                         # self.bed_thick[:] = self.bed_thick_node_child_grid_condition[idx, :]
                         self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[idx, :, :]
-                        self.bed_thick[:] = np.sum(self.bed_thick_i, axis=0)
                         # NOTE: The change of the bed elevation is given instead of the elevation itself,
                         # because the initial topography can differ between the parent and child grids.
                         self.eta_external = self.eta_init + self.bed_thick_node_child_grid_condition[idx, :]
@@ -1271,7 +1268,6 @@ class TurbidityCurrent2D(Component):
                         self.Ch_i[j, :] = self.C_i[j, :] * self.h
                     self.C[:] = np.sum(self.C_i, axis=0)
                     self.Ch[:] = np.sum(self.Ch_i, axis=0)
-                    self.bed_thick[:] = self.bed_thick_node_child_grid_condition[:]
                     self.bed_thick_i[:, :] = self.bed_thick_i_node_child_grid_condition[:, :]
                     self.eta_external = self.eta_init + self.bed_thick_node_child_grid_condition[:]
                     self.eta[:] = self.eta_external
@@ -1314,10 +1310,6 @@ class TurbidityCurrent2D(Component):
 
                     self.C[:] = np.sum(self.C_i, axis=0)
                     self.Ch[:] = np.sum(self.Ch_i, axis=0)
-                    self.bed_thick[self.grid.nodes_at_top_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_top_edge]
-                    self.bed_thick[self.grid.nodes_at_left_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_left_edge]
-                    self.bed_thick[self.grid.nodes_at_right_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_right_edge]
-                    self.bed_thick[self.grid.nodes_at_bottom_edge] = self.bed_thick_node_child_grid_condition[self.grid.nodes_at_bottom_edge]
                     self.eta_external = self.eta_init + self.bed_thick_node_child_grid_condition[:]
                     self.eta[self.grid.perimeter_nodes] = self.eta_external[self.grid.perimeter_nodes]
 

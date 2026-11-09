@@ -140,7 +140,6 @@ class OneWayNesting():
 
         tc_child.C[:] = np.sum(tc_child.C_i, axis=0)
         tc_child.Ch[:] = np.sum(tc_child.Ch_i, axis=0)
-        tc_child.bed_thick[:] = np.sum(tc_child.bed_thick_i, axis=0)
         
     def interp_griddata(self, x, y, parent_values, x_new, y_new, interp_method='linear'):
         """
@@ -365,7 +364,6 @@ class OneWayNesting():
                                                                                       nested_idx=self.nested_region_idx[0],
                                                                                       spatial_interp_method='linear')
 
-        # NOTE: tc_parent.bed_thick_ini cannot be used here. It is the sum of bed_thick_i, whereas bed_thick is eta - eta_init.
         self.tc_child.bed_thick_node_child_grid_condition[:, :] = self.interpolate_parent_to_child_grid(time_interp=self.tc_child.time_interp,
                                                                                               variable_start=self.tc_parent.eta_ini - self.tc_parent.eta_init,
                                                                                               variable_end=self.tc_parent.eta - self.tc_parent.eta_init,
@@ -469,7 +467,6 @@ class OneWayNesting():
         self.tc_child.C_i[:, wet_zone_nodes] = self.tc_child.Ch_i[:, wet_zone_nodes] / self.tc_child.h[wet_zone_nodes]
         self.tc_child.C[:] = np.sum(self.tc_child.C_i, axis=0)
         self.tc_child.bed_thick_i[:, mask_frs_zone] = bed_thick_i_node_relax.reshape(self.tc_child.bed_thick_i.shape[0], -1)[:, mask_frs_zone]
-        self.tc_child.bed_thick[:] = np.sum(self.tc_child.bed_thick_i, axis=0)
         self.tc_child.eta[mask_frs_zone] = eta_node_relax.flatten()[mask_frs_zone]
         if self.tc_child.model == '4eq':
             self.tc_child.Kh_node[mask_frs_zone] = Kh_node_relax.flatten()[mask_frs_zone]
