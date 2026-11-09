@@ -220,7 +220,6 @@ def create_child_topography(
     if xmin % parent_grid_spacing != 0:
         xmin = round(float(xmin) / float(parent_grid_spacing)) * parent_grid_spacing
         xmin = Decimal(str(xmin))
-    check_nested_region_in_parent(parent_grid, xmin, xmax, ymin, ymax)
 
     length = (ymax - ymin)
     width = (xmax - xmin)
@@ -410,7 +409,6 @@ def create_nested_grid(config_file_parent=None,
         xmax = round(float(xmax) / float(parent_grid_spacing)) * parent_grid_spacing
     if xmin % parent_grid_spacing != 0:
         xmin = round(float(xmin) / float(parent_grid_spacing)) * parent_grid_spacing
-    check_nested_region_in_parent(parent_grid, xmin, xmax, ymin, ymax)
 
     ymax = Decimal(str(ymax))
     ymin = Decimal(str(ymin))
@@ -1045,6 +1043,63 @@ def check_nested_region_in_parent(parent_grid, xmin, xmax, ymin, ymax):
                 float(xmin), float(xmax), float(ymin), float(ymax),
                 float(parent_xmin), float(parent_xmax),
                 float(parent_ymin), float(parent_ymax),
+            )
+        )
+
+
+def check_parent_nodes_on_child_grid(parent_grid, child_grid, nested_region_idx):
+    """Raise an error if the parent nodes in a nested region are not child nodes.
+
+       The nesting algorithm assumes that every node of the parent grid in the
+       nested region is also a node of the child grid.
+
+       Parameters
+       ----------------------
+       parent_grid: RasterModelGrid
+          a landlab grid object of the parent grid
+
+       child_grid: RasterModelGrid
+          a landlab grid object of the child grid
+
+       nested_region_idx: tuple or ndarray
+          indices of the nodes of the parent grid in the nested region
+
+       Raises
+       ----------------------
+       ValueError
+          If a parent node in the nested region is not a node of the child grid.
+    """
+
+    def unique_coordinates(coordinates, spacing):
+        # Coordinates are compared to the number of decimal places of the grid
+        # spacing, which removes the floating point error of the coordinates.
+        decimals = len(str(spacing).split(".")[1])
+        return np.unique(round_values(coordinates, decimals=decimals))
+
+    parent_spacing = parent_grid.spacing[0]
+    child_spacing = child_grid.spacing[0]
+    missing_x = np.setdiff1d(
+        unique_coordinates(parent_grid.x_of_node[nested_region_idx], parent_spacing),
+        unique_coordinates(child_grid.x_of_node, child_spacing),
+    )
+    missing_y = np.setdiff1d(
+        unique_coordinates(parent_grid.y_of_node[nested_region_idx], parent_spacing),
+        unique_coordinates(child_grid.y_of_node, child_spacing),
+    )
+
+    if missing_x.size > 0 or missing_y.size > 0:
+        raise ValueError(
+            "The nodes of the parent grid do not coincide with the nodes of the "
+            "child grid. Every parent node in the nested region must be a child "
+            "node, so the parent grid spacing must be an integer multiple of the "
+            "child grid spacing and the child grid must start at a parent node. "
+            "Parent grid spacing: {}, child grid spacing: {}. Parent node "
+            "coordinates that are not on the child grid (up to 5 for each axis): "
+            "x = {}, y = {}.".format(
+                float(parent_spacing),
+                float(child_spacing),
+                missing_x[:5].tolist(),
+                missing_y[:5].tolist(),
             )
         )
 

@@ -8,7 +8,7 @@ from turb2d._links import top_edge_vertical_ids, bottom_edge_vertical_ids, left_
 from landlab import RasterModelGrid
 from scipy.interpolate import griddata, RegularGridInterpolator
 from .gridutils import map_mean_of_link_nodes_to_link
-from .utils import check_nested_region_in_parent
+from .utils import check_nested_region_in_parent, check_parent_nodes_on_child_grid
 from ._links import vertical_link_ids, horizontal_link_ids
 import time
 import sys
@@ -87,6 +87,7 @@ class OneWayNesting():
                                     (parent_node_y > ymin) & 
                                     (parent_node_y < ymax)
                                     )
+        check_parent_nodes_on_child_grid(self.tc_parent.grid, self.tc_child.grid, self.nested_region_idx)
 
         # minimum distance from the grid node to external boundary of the child grid
         num_rows, num_cols = self.tc_child.grid.shape
