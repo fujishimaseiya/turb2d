@@ -9,6 +9,9 @@ The tests cover the following bugs:
 3. Enabling nesting changed the solution of a parent grid, because link values
    were replaced with the mean of the node values at every run_one_step().
 """
+from decimal import Decimal
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 import yaml
@@ -18,6 +21,7 @@ import turb2d.gridutils as gridutils
 from turb2d import TurbidityCurrent2D
 from turb2d.nesting import OneWayNesting
 from turb2d.utils import (
+    create_nested_grid,
     initialize_grid_fields,
     set_boundary_condition,
     set_inlet_condition,
@@ -660,6 +664,215 @@ class TestBedElevation:
             expected,
             atol=0.02 * np.max(np.abs(expected)),
         )
+
+
+class TestNestedRegionRounding:
+    """The nodes of a parent grid on the edges of a child grid must be selected,
+    even if the coordinates of the child grid have floating point errors.
+    """
+
+    @staticmethod
+    def make_nesting_of_region(parent_spacing, ratio, region):
+        """Make a nesting object in the same way as create_nested_grid().
+
+        The region is given as [xmin, xmax, ymin, ymax] in parent nodes.
+        """
+        dx_parent = Decimal(str(parent_spacing))
+        dx_child = dx_parent / ratio
+        xmin, xmax, ymin, ymax = [dx_parent * index for index in region]
+        parent = RasterModelGrid((121, 121), xy_spacing=[dx_parent, dx_parent])
+        child = RasterModelGrid(
+            ((ymax - ymin) / dx_child + 1, (xmax - xmin) / dx_child + 1),
+            xy_spacing=[dx_child, dx_child],
+            xy_of_lower_left=[xmin, ymin],
+        )
+        return OneWayNesting(
+            tc_parent=SimpleNamespace(grid=parent),
+            tc_child=SimpleNamespace(grid=child),
+            dt=DT,
+        )
+
+    def test_node_on_edge_with_rounding_error_is_selected(self):
+        """xmax of the child grid is 3.5999999999999996 in this region."""
+        nesting = self.make_nesting_of_region(0.1, 5, [19, 36, 2, 15])
+
+        assert nesting.tc_child.grid.x_of_node.max() < 3.6
+        assert nesting.nested_region_idx[0].size == 18 * 14
+        assert nesting.nested_region_idx_except_boundary[0].size == 16 * 12
+
+    @pytest.mark.parametrize(
+        "parent_spacing, ratio", [(0.1, 5), (0.01, 2), (0.01, 5), (0.02, 2)]
+    )
+    def test_all_nodes_in_region_are_selected(self, parent_spacing, ratio):
+        for xmin in range(1, 25, 3):
+            for width in (10, 17, 30):
+                for ymin in (2, 7, 20):
+                    for height in (13, 40, 50):
+                        region = [xmin, xmin + width, ymin, ymin + height]
+                        nesting = self.make_nesting_of_region(
+                            parent_spacing, ratio, region
+                        )
+
+                        assert nesting.nested_region_idx[0].size == (width + 1) * (
+                            height + 1
+                        ), region
+                        assert nesting.nested_region_idx_except_boundary[0].size == (
+                            width - 1
+                        ) * (height - 1), region
+
+
+class TestChildGridRange:
+    """A child grid outside its parent grid must be rejected.
+
+    The parent grid covers x = [0, 2000] and y = [0, 4000].
+    """
+
+    OUTSIDE = [
+        pytest.param([-500.0, 500.0, 1500.0, 3500.0], id="left"),
+        pytest.param([1500.0, 2500.0, 1500.0, 3500.0], id="right"),
+        pytest.param([500.0, 1500.0, -500.0, 1500.0], id="bottom"),
+        pytest.param([500.0, 1500.0, 3000.0, 4500.0], id="top"),
+    ]
+    SAME_AS_PARENT = [0.0, 2000.0, 0.0, 4000.0]
+
+    @staticmethod
+    def write_grid_configs(tmp_path, region):
+        """Write the grid parameters, and return (parent path, child path)."""
+        parent = tmp_path / "grid_parent.yml"
+        child = tmp_path / "grid_child.yml"
+        with open(parent, "w") as f:
+            yaml.safe_dump(
+                {
+                    "grid_param": {
+                        "grid_file": None,
+                        "flume_length": 4000,
+                        "flume_width": 2000,
+                        "spacing": DX_PARENT,
+                        "slope_outside": SLOPE,
+                        "slope_inside": SLOPE,
+                        "slope_basin": SLOPE,
+                        "slope_basin_break": 500,
+                        "canyon_basin_break": 500,
+                        "canyon_center": 1000,
+                        "canyon_half_width": 500,
+                        "canyon": None,
+                        "noise": 0.0,
+                    }
+                },
+                f,
+            )
+        with open(child, "w") as f:
+            yaml.safe_dump(
+                {
+                    "grid_param": {
+                        "spacing": DX_CHILD,
+                        "nested_region_xmin": region[0],
+                        "nested_region_xmax": region[1],
+                        "nested_region_ymin": region[2],
+                        "nested_region_ymax": region[3],
+                    }
+                },
+                f,
+            )
+        return str(parent), str(child)
+
+    @pytest.mark.parametrize("region", OUTSIDE)
+    def test_nesting_rejects_child_outside_parent(self, tmp_path, region):
+        parent = make_parent(tmp_path)
+        child = make_child(tmp_path, region, y_top=4000.0)
+
+        with pytest.raises(ValueError, match="inside the parent grid"):
+            OneWayNesting(tc_parent=parent, tc_child=child, dt=DT)
+
+    def test_nesting_accepts_child_same_as_parent(self, tmp_path):
+        parent = make_parent(tmp_path)
+        child = make_child(tmp_path, self.SAME_AS_PARENT, y_top=4000.0)
+
+        OneWayNesting(tc_parent=parent, tc_child=child, dt=DT)
+
+    def test_create_nested_grid_accepts_same_as_parent(self, tmp_path):
+        parent, child = self.write_grid_configs(tmp_path, self.SAME_AS_PARENT)
+
+        _, child_grid, _ = create_nested_grid(
+            config_file_parent=parent, config_file_child=child
+        )
+
+        assert not np.any(np.isnan(child_grid.at_node["topographic__elevation"]))
+
+    def test_create_nested_grid_checks_rounded_region(self, tmp_path):
+        """ymax = 4040 is outside the parent grid, but rounded to 4000."""
+        region = [500.0, 1500.0, 3000.0, 4040.0]
+        parent, child = self.write_grid_configs(tmp_path, region)
+
+        _, child_grid, _ = create_nested_grid(
+            config_file_parent=parent, config_file_child=child
+        )
+
+        assert child_grid.y_of_node.max() == 4000.0
+
+
+class TestParentChildNodeAlignment:
+    """Every parent node in a nested region must be a node of the child grid."""
+
+    MESSAGE = "do not coincide"
+
+    @staticmethod
+    def make_nesting_of_spacing(parent_spacing, child_spacing, num_cells, offset=0):
+        """Make a nesting object whose child grid covers num_cells parent cells.
+
+        The child grid starts at the node 3 of the parent grid, shifted by offset.
+        """
+        dx_parent = Decimal(str(parent_spacing))
+        dx_child = Decimal(str(child_spacing))
+        lower_left = dx_parent * 3 + Decimal(str(offset))
+        width = dx_parent * num_cells
+        parent = RasterModelGrid((61, 61), xy_spacing=[dx_parent, dx_parent])
+        child = RasterModelGrid(
+            (width / dx_child + 1, width / dx_child + 1),
+            xy_spacing=[dx_child, dx_child],
+            xy_of_lower_left=[lower_left, lower_left],
+        )
+        return OneWayNesting(
+            tc_parent=SimpleNamespace(grid=parent),
+            tc_child=SimpleNamespace(grid=child),
+            dt=DT,
+        )
+
+    @pytest.mark.parametrize(
+        "parent_spacing, child_spacing, num_cells",
+        [
+            (100.0, 40.0, 4),
+            (90.0, 60.0, 4),
+            (100.0, 30.0, 3),
+            (50.0, 100.0, 4),
+            (1.0, 0.3333333333, 3),
+        ],
+    )
+    def test_nesting_rejects_non_coinciding_nodes(
+        self, parent_spacing, child_spacing, num_cells
+    ):
+        with pytest.raises(ValueError, match=self.MESSAGE):
+            self.make_nesting_of_spacing(parent_spacing, child_spacing, num_cells)
+
+    @pytest.mark.parametrize(
+        "parent_spacing, child_spacing",
+        [(100.0, 100.0), (100.0, 50.0), (100.0, 25.0), (1.0, 0.25), (0.1, 0.02)],
+    )
+    def test_nesting_accepts_coinciding_nodes(self, parent_spacing, child_spacing):
+        self.make_nesting_of_spacing(parent_spacing, child_spacing, 4)
+
+    def test_nesting_rejects_child_shifted_from_parent_nodes(self):
+        with pytest.raises(ValueError, match=self.MESSAGE):
+            self.make_nesting_of_spacing(100.0, 100.0, 4, offset=50)
+
+    def test_error_reports_spacings_and_coordinates(self):
+        with pytest.raises(ValueError) as error:
+            self.make_nesting_of_spacing(100.0, 40.0, 4)
+
+        message = str(error.value)
+        assert "Parent grid spacing: 100.0" in message
+        assert "child grid spacing: 40.0" in message
+        assert "400.0" in message
 
 
 @pytest.mark.parametrize("num_relaxation_grid", [0, 3])
