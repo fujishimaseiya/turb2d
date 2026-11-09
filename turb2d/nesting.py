@@ -66,13 +66,13 @@ class OneWayNesting():
         self.dt = dt
         self.num_relaxation_grid = num_relaxation_grid
 
-        xmin = self.tc_child.grid.x_of_node.min()
-        xmax = self.tc_child.grid.x_of_node.max()
-        ymin = self.tc_child.grid.y_of_node.min()
-        ymax = self.tc_child.grid.y_of_node.max()
-        check_nested_region_in_parent(self.tc_parent.grid, xmin, xmax, ymin, ymax)
         # The extraction of regions by self.nested_region does not work well due to floating point precision.
-        # Therefore, the coordinates of the parent grid are rounded to a specified number of decimal places.
+        # Therefore, the coordinates of the parent and child grids are rounded to a specified number of decimal places.
+        xmin = self.round_values(self.tc_child.grid.x_of_node.min(), decimals=5)
+        xmax = self.round_values(self.tc_child.grid.x_of_node.max(), decimals=5)
+        ymin = self.round_values(self.tc_child.grid.y_of_node.min(), decimals=5)
+        ymax = self.round_values(self.tc_child.grid.y_of_node.max(), decimals=5)
+        check_nested_region_in_parent(self.tc_parent.grid, xmin, xmax, ymin, ymax)
         parent_node_x = self.round_values(self.tc_parent.grid.node_x, decimals=5)
         parent_node_y = self.round_values(self.tc_parent.grid.node_y, decimals=5)
         self.nested_region_idx = np.where(
