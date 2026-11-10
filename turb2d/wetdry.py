@@ -303,13 +303,13 @@ def process_partial_wet_grids(
     # Calculate time development of variables at partial wet links #
     ################################################################
     CfuU = Cf * np.sqrt(
-        u[partial_wet_horizontal_links] * u[partial_wet_horizontal_links] +
-        v[partial_wet_horizontal_links] * v[partial_wet_horizontal_links]
-    ) / (h[horizontally_wettest_nodes] + h[horizontally_partial_wet_nodes]) * 2
+        u[partial_wet_horizontal_links] * u[partial_wet_horizontal_links]
+        + v[partial_wet_horizontal_links] * v[partial_wet_horizontal_links]
+        ) / (h[horizontally_wettest_nodes] + h[horizontally_partial_wet_nodes]) * 2
     CfvU = Cf * np.sqrt(
-        u[partial_wet_vertical_links] * u[partial_wet_vertical_links] *
-        +v[partial_wet_vertical_links] * v[partial_wet_vertical_links]) / (
-            h[vertically_wettest_nodes] + h[vertically_partial_wet_nodes]) * 2
+        u[partial_wet_vertical_links] * u[partial_wet_vertical_links]
+        + v[partial_wet_vertical_links] * v[partial_wet_vertical_links]
+        ) / (h[vertically_wettest_nodes] + h[vertically_partial_wet_nodes]) * 2
 
     hdw = horizontal_direction_wettest
     vdw = vertical_direction_wettest
