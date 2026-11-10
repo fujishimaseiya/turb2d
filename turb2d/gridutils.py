@@ -235,9 +235,9 @@ def map_links_to_nodes(
     if dudx is not None:
         dudx[dry_links] = 0
     if dudy is not None:
-        dvdy[dry_links] = 0
+        dudy[dry_links] = 0
     if dvdx is not None:
-        dudx[dry_links] = 0
+        dvdx[dry_links] = 0
     if dvdy is not None:
         dvdy[dry_links] = 0
     if Kh is not None:
