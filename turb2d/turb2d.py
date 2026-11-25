@@ -3167,7 +3167,7 @@ class TurbidityCurrent2D(Component):
 
         karman = self.karman
 
-        out = 1 / 6.0 * karman * np.sqrt(u * u + v * v) * h_link
+        out[:] = 1 / 6.0 * karman * np.sqrt(u * u + v * v) * h_link
 
     def save_grid(self, filename, clobber=True):
         """save a grid file
