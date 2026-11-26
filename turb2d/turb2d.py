@@ -1557,6 +1557,7 @@ class TurbidityCurrent2D(Component):
             u_node=self.u_node,
             v_node=self.v_node,
             Ch_link=self.Ch_link,
+            Ch_link_i=self.Ch_link_i,
             U=self.U,
             U_node=self.U_node,
         )
@@ -1659,6 +1660,7 @@ class TurbidityCurrent2D(Component):
             u_node=self.u_node,
             v_node=self.v_node,
             Ch_link=self.Ch_link,
+            Ch_link_i=self.Ch_link_i,
             U=self.U,
             U_node=self.U_node,
         )
@@ -2417,6 +2419,7 @@ class TurbidityCurrent2D(Component):
             u_node=self.u_node,
             v_node=self.v_node,
             Ch_link=self.Ch_link,
+            Ch_link_i=self.Ch_link_i,
             U=self.U,
             U_node=self.U_node,
         )
@@ -2483,6 +2486,7 @@ class TurbidityCurrent2D(Component):
             eta=self.eta,
             h_link=self.h_link,
             Ch_link=self.Ch_link,
+            Ch_link_i=self.Ch_link_i,
         )
 
     def update_gradients(self):

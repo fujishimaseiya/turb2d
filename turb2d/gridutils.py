@@ -501,9 +501,6 @@ def map_nodes_to_links(
             out=v
         )
 
-    if Ch_link is not None:
-        Ch_link = np.sum(Ch_link_i, axis=0)
-
     if dhdx is not None:
         dhdx[tc.dry_nodes] = 0
     if dhdy is not None:
@@ -558,7 +555,15 @@ def map_nodes_to_links(
         tc.update_boundary_conditions(
             h=h, Ch_i=Ch_i, h_link=h_link, Ch_link_i=Ch_link_i, eta=eta
         )
-    
+
+    # Ch_link is the sum of Ch_link_i. It is updated in place after the
+    # boundary conditions are applied to Ch_link_i, so that the caller's
+    # array holds the new values.
+    if Ch_link is not None:
+        if Ch_link_i is None:
+            raise ValueError("Ch_link_i is required to update Ch_link")
+        Ch_link[:] = np.sum(Ch_link_i, axis=0)
+
     # check if this calcultion used nesting grid
     nesting = (tc.one_way_nesting or tc.two_way_nesting)
     if nesting is True and tc.parent_grid is False and tc.child_grid is True:
