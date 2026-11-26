@@ -1023,7 +1023,7 @@ class Jameson:
                 + self.eps_node_horiz[self.east_node_at_horizontal_link[core]]
                 * (f[self.link_east[core]] - f[core])
                 - self.eps_node_horiz[self.west_node_at_horizontal_link[core]]
-                * (f[core] - f[self.west_node_at_horizontal_link[core]])
+                * (f[core] - f[self.link_west[core]])
             )
 
         if at == "vlink":
@@ -1032,7 +1032,7 @@ class Jameson:
                 + self.eps_node_vert[self.north_node_at_vertical_link[core]]
                 * (f[self.link_north[core]] - f[core])
                 - self.eps_node_vert[self.south_node_at_vertical_link[core]]
-                * (f[core] - f[self.south_node_at_vertical_link[core]])
+                * (f[core] - f[self.link_south[core]])
             )
 
         return out
