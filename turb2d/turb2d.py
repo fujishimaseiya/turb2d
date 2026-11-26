@@ -2654,6 +2654,70 @@ class TurbidityCurrent2D(Component):
 
         self.update_values()
 
+    def _calc_bedload_divergence(self, bedload_x, bedload_y, nodes):
+        """Calculate the divergence of bedload flux at wet nodes
+
+           The flux at a link is the mean of the fluxes at its two nodes,
+           which gives the central difference in the interior of the wet
+           region. Links touching a core node that is not wet carry no
+           flux, so that bedload is conserved at the wet/dry front.
+           At the grid edges, the flux at the edge node is copied from
+           the adjacent node (Neumann boundary condition) so that bedload
+           can leave the grid.
+
+           Parameters
+           ----------------
+           bedload_x: 2d ndarray
+               x component of bedload flux at nodes (grain class, node).
+               The values at the edge nodes are overwritten.
+           bedload_y: 2d ndarray
+               y component of bedload flux at nodes (grain class, node).
+               The values at the edge nodes are overwritten.
+           nodes: 1d ndarray
+               wet core nodes
+
+           Returns
+           ----------------
+           div: 2d ndarray
+               divergence of bedload flux at nodes (grain class, nodes)
+        """
+        grid = self.grid
+
+        # Neumann boundary condition at the grid edges
+        bedload_x[:, grid.nodes_at_right_edge] = bedload_x[
+            :, self.node_west[grid.nodes_at_right_edge]]
+        bedload_x[:, grid.nodes_at_left_edge] = bedload_x[
+            :, self.node_east[grid.nodes_at_left_edge]]
+        bedload_y[:, grid.nodes_at_top_edge] = bedload_y[
+            :, self.node_south[grid.nodes_at_top_edge]]
+        bedload_y[:, grid.nodes_at_bottom_edge] = bedload_y[
+            :, self.node_north[grid.nodes_at_bottom_edge]]
+
+        # nodes that can exchange bedload: wet nodes and edge nodes
+        can_exchange = np.ones(grid.number_of_nodes, dtype=bool)
+        can_exchange[grid.core_nodes] = False
+        can_exchange[nodes] = True
+
+        tail = grid.node_at_link_tail
+        head = grid.node_at_link_head
+        flux = np.zeros([bedload_x.shape[0], grid.number_of_links])
+        h_links = grid.horizontal_links
+        v_links = grid.vertical_links
+        flux[:, h_links] = 0.5 * (
+            bedload_x[:, tail[h_links]] + bedload_x[:, head[h_links]])
+        flux[:, v_links] = 0.5 * (
+            bedload_y[:, tail[v_links]] + bedload_y[:, head[v_links]])
+        flux[:, ~(can_exchange[tail] & can_exchange[head])] = 0.0
+
+        # links at node are ordered as east, north, west, south
+        links = grid.links_at_node[nodes]
+        div = (
+            (flux[:, links[:, 0]] - flux[:, links[:, 2]]) / grid.dx
+            + (flux[:, links[:, 1]] - flux[:, links[:, 3]]) / grid.dy
+        )
+
+        return div
+
     def calc_deposition(
         self,
         h,
@@ -2691,12 +2755,6 @@ class TurbidityCurrent2D(Component):
         dt = self.dt_local
         ws = self.ws
         r0 = self.r0
-        node_east = self.node_east[nodes]
-        node_west = self.node_west[nodes]
-        node_north = self.node_north[nodes]
-        node_south = self.node_south[nodes]
-        dx = self.grid.dx
-
 
         # copy previous values of Ch
         self.Ch_i_prev[:, nodes] = Ch_i[:, nodes]
@@ -2772,21 +2830,21 @@ class TurbidityCurrent2D(Component):
            )
 
            self.bedload_total[:, nodes] *= self.bed_active_layer[:, nodes]
+
+           # bedload flux exists only at wet nodes. Values left from the
+           # previous steps at the other nodes must not be used.
+           self.bedload_x[:, :] = 0.0
+           self.bedload_y[:, :] = 0.0
            self.bedload_x[:, nodes] = (
                u_node[nodes] / (U_node[nodes] + 1.0e-7) * self.bedload_total[:, nodes]
            )
            self.bedload_y[:, nodes] = (
                v_node[nodes] / (U_node[nodes] + 1.0e-7) * self.bedload_total[:, nodes]
            )
-           self.bed_change_i[:, nodes] += dt / dx / 2.0 * (
-               self.bedload_x[:, node_east] - self.bedload_x[:, node_west]
-               + self.bedload_y[:, node_north] - self.bedload_y[:, node_south])
-        
-        # update bedload flux at boundary (Neumann boundary condition)
-        self.bedload_x[:, self.grid.nodes_at_right_edge] = self.bedload_x[:, self.node_west[self.grid.nodes_at_right_edge]]
-        self.bedload_x[:, self.grid.nodes_at_left_edge] = self.bedload_x[:, self.node_east[self.grid.nodes_at_left_edge]]
-        self.bedload_y[:, self.grid.nodes_at_top_edge] = self.bedload_y[:, self.node_south[self.grid.nodes_at_top_edge]]
-        self.bedload_y[:, self.grid.nodes_at_bottom_edge] = self.bedload_y[:, self.node_north[self.grid.nodes_at_bottom_edge]]
+
+           # Exner equation: deposition is positive in bed_change_i
+           div = self._calc_bedload_divergence(self.bedload_x, self.bedload_y, nodes)
+           self.bed_change_i[:, nodes] -= dt * div
 
         # Apply diffusion to avoid slope steeper than angle of repose
         self._bed_diffusion_at_high_slope()
